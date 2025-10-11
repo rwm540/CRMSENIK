@@ -31,14 +31,12 @@ const ReferTicketModal: React.FC<ReferTicketModalProps> = ({ isOpen, onClose, on
     const { role } = currentUser;
     const currentUserDepartment = getDepartment(role);
 
-    // مدیر (Manager) can refer to other managers and leads.
+    // مدیر (Manager) can refer to other managers or leads, except themselves.
     if (role === 'مدیر') {
-      return users.filter(user => {
-        const isNotCurrentUser = user.username !== currentUser.username;
-        const isManager = user.role === 'مدیر';
-        const isLead = user.role.startsWith('مسئول ');
-        return isNotCurrentUser && (isManager || isLead);
-      });
+      return users.filter(user =>
+        user.username !== currentUser.username &&
+        (user.role === 'مدیر' || user.role.startsWith('مسئول'))
+      );
     }
 
     // مسئول (Lead) can refer to their own specialists, other leads, and managers.

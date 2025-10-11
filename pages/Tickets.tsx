@@ -1,16 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { Ticket, Customer, User, Referral, SupportContract, TicketStatus } from '../types';
+import { Ticket, Customer, User, Referral, SupportContract } from '../types';
+// FIX: Corrected import path for component.
 import TicketTable from '../components/TicketTable';
+// FIX: Corrected import path for component.
 import TicketFormModal from '../components/TicketFormModal';
 import { PlusIcon } from '../components/icons/PlusIcon';
 import TicketBoard from '../components/TicketBoard';
 import ReferTicketModal from '../components/ReferTicketModal';
-import { toPersianDigits } from '../utils/dateFormatter';
+import { parseJalaaliDateTime, toPersianDigits } from '../utils/dateFormatter';
 import Pagination from '../components/Pagination';
+import { calculateTicketScore } from '../utils/ticketScoring';
 import { UserCheckIcon } from '../components/icons/UserCheckIcon';
 import { TrashIcon } from '../components/icons/TrashIcon';
-import { CheckCircleIcon } from '../components/icons/CheckCircleIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
+import AttachmentPreviewModal from '../components/AttachmentPreviewModal';
 
 interface TicketsProps {
   tickets: Ticket[];
@@ -18,12 +21,11 @@ interface TicketsProps {
   customers: Customer[];
   users: User[];
   supportContracts: SupportContract[];
-  onSave: (ticket: Ticket | Omit<Ticket, 'id'>, isFromReferral: boolean) => void;
+  onSave: (ticket: Ticket | Omit<Ticket, 'id'>) => Promise<void>;
   onReferTicket: (ticketId: number, isFromReferral: boolean, referredBy: User, referredToUsername: string) => void;
   onToggleWork: (ticketId: number) => void;
   onDeleteTicket: (ticketId: number) => void;
   onDeleteManyTickets: (ticketIds: number[]) => void;
-  onSetStatusManyTickets: (ticketIds: number[], status: TicketStatus) => void;
   onReopenTicket: (ticketId: number) => void;
   onExtendEditTime: (ticketId: number) => void;
   currentUser: User;
@@ -31,7 +33,7 @@ interface TicketsProps {
 
 const ITEMS_PER_PAGE = 10;
 
-const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users, onSave, onReferTicket, onToggleWork, currentUser, supportContracts, onDeleteTicket, onReopenTicket, onExtendEditTime, onDeleteManyTickets, onSetStatusManyTickets }) => {
+const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users, onSave, onReferTicket, onToggleWork, currentUser, supportContracts, onDeleteTicket, onDeleteManyTickets, onReopenTicket, onExtendEditTime }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [isReferModalOpen, setIsReferModalOpen] = useState(false);
@@ -41,8 +43,8 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
   const [showCompleted, setShowCompleted] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isCompleteConfirmOpen, setIsCompleteConfirmOpen] = useState(false);
+  const [itemsToDelete, setItemsToDelete] = useState<number[] | null>(null);
+  const [previewAttachments, setPreviewAttachments] = useState<string[] | null>(null);
   
   const referredTicketIds = useMemo(() => new Set(referrals.map(r => r.ticket.id)), [referrals]);
 
@@ -62,7 +64,7 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
   };
   
   const handleOpenGroupReferModal = () => {
-    const ticketsToRefer = filteredTickets.filter(t => selectedIds.includes(t.id));
+    const ticketsToRefer = sortedAndFilteredTickets.filter(t => selectedIds.includes(t.id));
     if (ticketsToRefer.length > 0) {
         setReferringTickets(ticketsToRefer);
         setIsReferModalOpen(true);
@@ -74,10 +76,9 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
     setTimeout(() => setReferringTickets(null), 300);
   };
 
-  const handleSaveTicket = (ticketData: Ticket | Omit<Ticket, 'id'>) => {
-    const isFromReferral = 'id' in ticketData ? referredTicketIds.has(ticketData.id) : false;
-    onSave(ticketData, isFromReferral);
-    handleCloseModal();
+  const handleSaveTicket = async (ticketData: Ticket | Omit<Ticket, 'id'>) => {
+    await onSave(ticketData);
+    // handleCloseModal is now called from within the form modal after async ops.
   };
 
   const handleReferTicketSubmit = (newAssigneeUsername: string) => {
@@ -94,45 +95,37 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
     setSearchTerm(e.target.value);
     setCurrentPage(1);
   };
-
-  const handleConfirmDeleteMany = () => {
-    onDeleteManyTickets(selectedIds);
-    setIsDeleteConfirmOpen(false);
-    setSelectedIds([]);
-  };
-
-  const handleConfirmCompleteMany = () => {
-    onSetStatusManyTickets(selectedIds, 'اتمام یافته');
-    setIsCompleteConfirmOpen(false);
-    setSelectedIds([]);
-  };
-
-  const filteredTickets = useMemo(() => {
-    // 1. Create a unified, unique list of all tickets from props, preserving scores.
-    const allTicketsMap = new Map<number, Ticket>();
-    tickets.forEach(ticket => allTicketsMap.set(ticket.id, ticket));
-    referrals.forEach(referral => {
-        if (referral.ticket) {
-            const existingTicket = allTicketsMap.get(referral.ticket.id);
-            allTicketsMap.set(referral.ticket.id, { 
-                ...referral.ticket, 
-                score: existingTicket?.score ?? referral.ticket.score 
-            });
-        }
-    });
-    let sourceTickets = Array.from(allTicketsMap.values());
-
-    // 2. KEY CHANGE: Hide all 'Referred' tickets from this page for ALL users.
-    sourceTickets = sourceTickets.filter(ticket => ticket.status !== 'ارجاع شده');
-
-    // 3. Filter by 'Completed' status based on the toggle.
-    if (showCompleted) {
-        sourceTickets = sourceTickets.filter(ticket => ticket.status === 'اتمام یافته');
-    } else {
-        sourceTickets = sourceTickets.filter(ticket => ticket.status !== 'اتمام یافته');
+  
+  const handleConfirmDelete = () => {
+    if (itemsToDelete) {
+        onDeleteManyTickets(itemsToDelete);
+        setSelectedIds([]);
     }
-    
-    // 4. Filter by user access rights for non-managers.
+    setItemsToDelete(null);
+  };
+
+  const sortedAndFilteredTickets = useMemo(() => {
+    let sourceTickets: Ticket[];
+
+    // When showing completed, we want to show ALL completed tickets, including those that might have been referred and then completed.
+    // When showing active, we only want from the main 'tickets' list.
+    if (showCompleted) {
+        const allTicketsMap = new Map<number, Ticket>();
+        tickets.forEach(ticket => allTicketsMap.set(ticket.id, ticket));
+        referrals.forEach(referral => allTicketsMap.set(referral.ticket.id, referral.ticket));
+        sourceTickets = Array.from(allTicketsMap.values());
+    } else {
+        sourceTickets = [...tickets];
+    }
+
+    // Filter by status: show completed OR show active (not completed AND not referred)
+    sourceTickets = sourceTickets.filter(ticket =>
+      showCompleted 
+        ? ticket.status === 'اتمام یافته' 
+        : ticket.status !== 'اتمام یافته' && ticket.status !== 'ارجاع شده'
+    );
+
+    // Filter by user access rights
     if (currentUser.role !== 'مدیر') {
       if (currentUser.role.startsWith('مسئول')) { // Is a department lead
         const department = currentUser.role.replace('مسئول ', '');
@@ -150,7 +143,7 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
       }
     }
 
-    // 5. Filter by search term.
+    // Filter by search term
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       sourceTickets = sourceTickets.filter(ticket => {
@@ -164,21 +157,27 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
       });
     }
 
-    // 6. Re-sort the filtered list because map iteration order isn't guaranteed.
-    return sourceTickets.sort((a, b) => {
-        const scoreA = a.score ?? 999;
-        const scoreB = b.score ?? 999;
-        if (scoreA !== scoreB) {
-            return scoreA - scoreB;
+    // Score and sort the tickets
+    const scoredTickets = sourceTickets.map(ticket => ({
+        ...ticket,
+        score: calculateTicketScore(ticket, customers, supportContracts),
+    }));
+
+    scoredTickets.sort((a, b) => {
+        if (a.score !== b.score) {
+            return a.score - b.score;
         }
-        return b.id - a.id; // Fallback to ID for stable sort
+        const dateA = parseJalaaliDateTime(a.creationDateTime)?.getTime() || 0;
+        const dateB = parseJalaaliDateTime(b.creationDateTime)?.getTime() || 0;
+        return dateB - dateA; // Sort by creation date descending as a tie-breaker
     });
 
-  }, [tickets, referrals, searchTerm, customers, showCompleted, currentUser, users]);
+    return scoredTickets;
+  }, [tickets, referrals, searchTerm, customers, showCompleted, currentUser, supportContracts, users]);
 
 
-  const totalPages = Math.ceil(filteredTickets.length / ITEMS_PER_PAGE);
-  const paginatedTickets = filteredTickets.slice(
+  const totalPages = Math.ceil(sortedAndFilteredTickets.length / ITEMS_PER_PAGE);
+  const paginatedTickets = sortedAndFilteredTickets.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
@@ -202,8 +201,8 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
   const allOnPageSelected = paginatedTickets.length > 0 && paginatedTickets.every(t => selectedIds.includes(t.id));
 
   return (
-    <div className="flex-1 bg-gray-50 text-slate-800 p-4 sm:p-6 lg:p-8 flex flex-col">
-      <main className="max-w-7xl mx-auto w-full flex flex-col flex-1">
+    <div className="flex-1 bg-gray-50 text-slate-800 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+      <main className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-800">
@@ -236,7 +235,7 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col flex-1">
+        <div className="mt-8">
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
             <input
               type="text"
@@ -245,36 +244,23 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
               onChange={handleSearchChange}
               className="w-full max-w-sm bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm"
             />
-             {selectedIds.length > 0 && (
-                 <div className="flex items-center gap-2 flex-wrap">
-                    {!showCompleted && (
-                        <>
-                            <button 
-                                onClick={handleOpenGroupReferModal}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
-                            >
-                                <UserCheckIcon className="h-5 w-5" />
-                                <span>ارجاع ({toPersianDigits(selectedIds.length)}) مورد</span>
-                            </button>
-                            <button 
-                                onClick={() => setIsCompleteConfirmOpen(true)}
-                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors text-sm whitespace-nowrap"
-                            >
-                                <CheckCircleIcon className="h-5 w-5" />
-                                <span>اتمام ({toPersianDigits(selectedIds.length)}) مورد</span>
-                            </button>
-                        </>
-                    )}
-                    {currentUser.role === 'مدیر' && (
-                        <button 
-                            onClick={() => setIsDeleteConfirmOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm whitespace-nowrap"
-                        >
-                            <TrashIcon />
-                            <span>حذف ({toPersianDigits(selectedIds.length)}) مورد</span>
-                        </button>
-                    )}
-                 </div>
+             {selectedIds.length > 0 && !showCompleted && (
+                 <button 
+                    onClick={handleOpenGroupReferModal}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <UserCheckIcon className="h-5 w-5" />
+                    <span>ارجاع ({toPersianDigits(selectedIds.length)}) مورد</span>
+                 </button>
+            )}
+            {currentUser.role === 'مدیر' && selectedIds.length > 0 && (
+                <button
+                    onClick={() => setItemsToDelete(selectedIds)}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm whitespace-nowrap"
+                  >
+                    <TrashIcon />
+                    <span>حذف ({toPersianDigits(selectedIds.length)}) مورد</span>
+                </button>
             )}
           </div>
           <div className="flex items-center lg:hidden mb-4">
@@ -289,36 +275,35 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           </div>
           {viewMode === 'list' ? (
             <>
-              <div className="flex-1">
-                <TicketTable
-                  tickets={paginatedTickets}
-                  customers={customers}
-                  users={users}
-                  supportContracts={supportContracts}
-                  onEdit={handleOpenModal}
-                  onRefer={handleOpenReferModal}
-                  onToggleWork={(ticketId) => onToggleWork(ticketId)}
-                  isReferralTable={false}
-                  emptyMessage={showCompleted ? 'هیچ تیکت اتمام یافته‌ای برای نمایش وجود ندارد.' : 'هیچ تیکت فعالی یافت نشد. برای شروع یک تیکت جدید ایجاد کنید.'}
-                  selectedIds={selectedIds}
-                  onToggleSelect={handleToggleSelect}
-                  onToggleSelectAll={handleToggleSelectAll}
-                  onDelete={onDeleteTicket}
-                  onReopen={onReopenTicket}
-                  onExtendEditTime={onExtendEditTime}
-                  currentUser={currentUser}
-                />
-              </div>
+              <TicketTable
+                tickets={paginatedTickets}
+                customers={customers}
+                users={users}
+                supportContracts={supportContracts}
+                onEdit={handleOpenModal}
+                onRefer={handleOpenReferModal}
+                onToggleWork={(ticketId) => onToggleWork(ticketId)}
+                onShowAttachments={setPreviewAttachments}
+                isReferralTable={false}
+                emptyMessage={showCompleted ? 'هیچ تیکت اتمام یافته‌ای برای نمایش وجود ندارد.' : 'هیچ تیکت فعالی یافت نشد. برای شروع یک تیکت جدید ایجاد کنید.'}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onToggleSelectAll={handleToggleSelectAll}
+                onDelete={onDeleteTicket}
+                onReopen={onReopenTicket}
+                onExtendEditTime={onExtendEditTime}
+                currentUser={currentUser}
+              />
               <Pagination 
                   currentPage={currentPage}
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
                   itemsPerPage={ITEMS_PER_PAGE}
-                  totalItems={filteredTickets.length}
+                  totalItems={sortedAndFilteredTickets.length}
               />
             </>
           ) : (
-            <TicketBoard tickets={filteredTickets} />
+            <TicketBoard tickets={sortedAndFilteredTickets} />
           )}
         </div>
 
@@ -332,6 +317,7 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           currentUser={currentUser}
           referrals={referrals}
           supportContracts={supportContracts}
+          onShowAttachments={setPreviewAttachments}
         />
         <ReferTicketModal
           isOpen={isReferModalOpen}
@@ -342,22 +328,16 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           currentUser={currentUser}
         />
         <ConfirmationModal
-            isOpen={isDeleteConfirmOpen}
-            onClose={() => setIsDeleteConfirmOpen(false)}
-            onConfirm={handleConfirmDeleteMany}
-            title="تایید حذف گروهی"
-            message={`آیا از حذف ${toPersianDigits(selectedIds.length)} تیکت انتخاب شده اطمینان دارید؟ این عمل قابل بازگشت نیست.`}
-            confirmText="بله، حذف کن"
-            confirmButtonColor="bg-red-600 hover:bg-red-700"
+          isOpen={!!itemsToDelete}
+          onClose={() => setItemsToDelete(null)}
+          onConfirm={handleConfirmDelete}
+          title="تایید حذف"
+          message={`آیا از حذف ${toPersianDigits(itemsToDelete?.length || 0)} تیکت انتخاب شده اطمینان دارید؟ این عمل قابل بازگشت نیست.`}
         />
-        <ConfirmationModal
-            isOpen={isCompleteConfirmOpen}
-            onClose={() => setIsCompleteConfirmOpen(false)}
-            onConfirm={handleConfirmCompleteMany}
-            title="تایید اتمام گروهی"
-            message={`آیا از اتمام ${toPersianDigits(selectedIds.length)} تیکت انتخاب شده اطمینان دارید؟`}
-            confirmText="بله، اتمام"
-            confirmButtonColor="bg-green-600 hover:bg-green-700"
+        <AttachmentPreviewModal 
+            isOpen={!!previewAttachments}
+            onClose={() => setPreviewAttachments(null)}
+            attachments={previewAttachments || []}
         />
       </main>
     </div>

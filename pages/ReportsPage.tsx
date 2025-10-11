@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Customer, PurchaseContract, SupportContract, Ticket, User, TicketStatus, TicketPriority, ContractStatus, CustomerStatus, UserRole } from '../types';
 import DatePicker from '../components/DatePicker';
 import Pagination from '../components/Pagination';
 import SearchableSelect from '../components/SearchableSelect';
-import { exportReportToCSV } from '../utils/dateFormatter';
+import { formatJalaaliDateTime, formatJalaali } from '../utils/dateFormatter';
 import { DownloadIcon } from '../components/icons/DownloadIcon';
 
 type ReportType = 'customers' | 'contracts' | 'tickets';
@@ -120,6 +119,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
             tickets: accessibleTickets,
         };
     }, [currentUser, users, customers, purchaseContracts, supportContracts, tickets]);
+
+    const allContracts = useMemo(() => [
+        ...accessibleData.purchaseContracts.map(c => ({ ...c, type: 'خرید', customerName: customers.find(cust => cust.id === c.customerId)?.companyName || 'N/A' })),
+        ...accessibleData.supportContracts.map(c => ({ ...c, type: 'پشتیبانی', contractId: `SC-${c.id}`, customerName: customers.find(cust => cust.id === c.customerId)?.companyName || 'N/A', totalAmount: 0, contractStatus: c.status, contractDate: c.startDate }))
+    ], [accessibleData, customers]);
     
     const handleGenerateReport = useCallback(() => {
         setCurrentPage(1);
@@ -128,15 +132,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
 
         const {
             customers: reportCustomers,
-            purchaseContracts: reportPurchaseContracts,
-            supportContracts: reportSupportContracts,
             tickets: reportTickets
         } = accessibleData;
-
-        const allContracts = [
-            ...reportPurchaseContracts.map(c => ({ ...c, type: 'خرید', customerName: customers.find(cust => cust.id === c.customerId)?.companyName || 'N/A' })),
-            ...reportSupportContracts.map(c => ({ ...c, type: 'پشتیبانی', contractId: `SC-${c.id}`, customerName: customers.find(cust => cust.id === c.customerId)?.companyName || 'N/A', totalAmount: 0, contractStatus: c.status, contractDate: c.startDate }))
-        ];
 
         const checkDateRange = (dateStr: string) => {
             if (!dateStr) return false;
@@ -237,43 +234,172 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
                 }));
                 break;
             case 'tickets':
-                columns = ['شماره تیکت', 'عنوان', 'مشتری', 'وضعیت', 'اولویت', 'کارشناس'];
+                columns = ['شماره تیکت', 'عنوان', 'مشتری', 'وضعیت', 'اولویت', 'کارشناس', 'تاریخ و ساعت شروع', 'تاریخ و ساعت پایان'];
                 data = reportTickets.filter(t => {
                     if (!checkDateRange(t.creationDateTime)) return false;
                     if (filters.status !== 'all' && t.status !== filters.status) return false;
                     if (filters.priority !== 'all' && t.priority !== filters.priority) return false;
                     if (filters.assignedTo !== 'all' && t.assignedToUsername !== filters.assignedTo) return false;
                     return true;
-                }).map(t => ({
-                    id: t.ticketNumber,
-                    title: t.title,
-                    customer: customers.find(c => c.id === t.customerId)?.companyName || 'N/A',
-                    status: t.status,
-                    priority: t.priority,
-                    specialist: getUserFullName(t.assignedToUsername)
-                }));
+                }).map(t => {
+                    let startDateTime = '---';
+                    let endDateTime = '---';
+
+                    if (t.status === 'در حال پیگیری') {
+                        startDateTime = t.workSessionStartedAt ? formatJalaaliDateTime(new Date(t.workSessionStartedAt)) : '---';
+                    } else if (t.status === 'اتمام یافته') {
+                        startDateTime = t.creationDateTime || '---';
+                        endDateTime = t.lastUpdateDate || '---';
+                    }
+
+                    return {
+                        id: t.ticketNumber,
+                        title: t.title,
+                        customer: customers.find(c => c.id === t.customerId)?.companyName || 'N/A',
+                        status: t.status,
+                        priority: t.priority,
+                        specialist: getUserFullName(t.assignedToUsername),
+                        startDateTime,
+                        endDateTime,
+                    };
+                });
                 break;
         }
 
         setReportData(data);
         setReportColumns(columns);
         setShowResults(true);
-    }, [filters, reportType, customers, users, accessibleData, currentUser]);
+    }, [filters, reportType, customers, users, accessibleData, currentUser, allContracts]);
 
     useEffect(() => {
         handleGenerateReport();
     }, [handleGenerateReport]);
+
+    const handleExport = useCallback(() => {
+        const filename = `${reportType}_report_${formatJalaali(new Date()).replace(/\//g, '-')}.csv`;
+        const csvRows: (string | number)[][] = [];
+    
+        // Add BOM for UTF-8 support in Excel
+        const BOM = '\uFEFF';
+    
+        // --- KPI Summary Section ---
+        csvRows.push(['خلاصه گزارش (KPIs)']);
+        csvRows.push([]); // Empty line
+    
+        switch (reportType) {
+            case 'customers':
+                csvRows.push(['مجموع مشتریان', reportData.length]);
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const levelCounts = reportData.reduce((acc, c) => {
+                    const key = String(c.level);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک سطح --']);
+                Object.entries(levelCounts).forEach(([level, count]) => csvRows.push([level, count]));
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const statusCountsCust = reportData.reduce((acc, c) => {
+                    const key = String(c.status);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک وضعیت --']);
+                Object.entries(statusCountsCust).forEach(([status, count]) => csvRows.push([status, count]));
+                break;
+    
+            case 'contracts':
+                const rawContracts = reportData.map(c => allContracts.find(ac => ac.contractId === (c.id as string))).filter((c): c is NonNullable<typeof c> => !!c);
+                const totalValue = rawContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    
+                csvRows.push(['مجموع قراردادها', reportData.length]);
+                csvRows.push(['ارزش کل قراردادها (ریال)', totalValue.toLocaleString('fa-IR')]);
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const statusCountsCont = reportData.reduce((acc, c) => {
+                    const key = String(c.status);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک وضعیت --']);
+                Object.entries(statusCountsCont).forEach(([status, count]) => csvRows.push([status, count]));
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const typeCounts = reportData.reduce((acc, c) => {
+                    const key = String(c.type);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک نوع --']);
+                Object.entries(typeCounts).forEach(([type, count]) => csvRows.push([type, count]));
+                break;
+    
+            case 'tickets':
+                csvRows.push(['مجموع تیکت ها', reportData.length]);
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const statusCountsTick = reportData.reduce((acc, t) => {
+                    const key = String(t.status);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک وضعیت --']);
+                Object.entries(statusCountsTick).forEach(([status, count]) => csvRows.push([status, count]));
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const priorityCounts = reportData.reduce((acc, t) => {
+                    const key = String(t.priority);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تفکیک اولویت --']);
+                Object.entries(priorityCounts).forEach(([priority, count]) => csvRows.push([priority, count]));
+                // FIX: Explicitly type accumulator in reduce to avoid type errors.
+                const specialistCounts = reportData.reduce((acc, t) => {
+                    const key = String(t.specialist);
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
+                }, {} as Record<string, number>);
+                csvRows.push(['-- تیکت به ازای هر کارشناس --']);
+                Object.entries(specialistCounts).forEach(([specialist, count]) => csvRows.push([specialist, count]));
+                break;
+        }
+    
+        csvRows.push([]);
+        csvRows.push(['--- داده های کامل گزارش ---']);
+        csvRows.push([]);
+    
+        // --- Data Section ---
+        csvRows.push(reportColumns);
+    
+        reportData.forEach(row => {
+            // FIX: Cast the result of Object.values to prevent 'unknown[]' type error.
+            csvRows.push(Object.values(row) as (string | number)[]);
+        });
+    
+        // --- CSV Generation and Download ---
+        const csvString = csvRows.map(e => e.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    
+        const blob = new Blob([BOM + csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }, [reportData, reportType, reportColumns, allContracts]);
 
     const totalPages = Math.ceil(reportData.length / ITEMS_PER_PAGE);
     const paginatedData = reportData.slice(
         (currentPage - 1) * ITEMS_PER_PAGE,
         currentPage * ITEMS_PER_PAGE
     );
-    
-    const handleExport = () => {
-        if (reportData.length === 0) return;
-        exportReportToCSV(reportType, reportData, reportColumns, filters);
-    };
 
     const renderFilters = () => {
         const ticketStatuses: TicketStatus[] = ['در حال پیگیری', 'انجام نشده', 'اتمام یافته'];
@@ -364,10 +490,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
             <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200/80 overflow-hidden">
                  <div className="p-4 border-b flex justify-between items-center">
                     <h3 className="text-lg font-semibold text-slate-800">نتایج گزارش</h3>
-                     {reportData.length > 0 && (
+                    {reportData.length > 0 && (
                         <button
                             onClick={handleExport}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors text-sm"
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
                         >
                             <DownloadIcon />
                             <span>خروجی اکسل</span>

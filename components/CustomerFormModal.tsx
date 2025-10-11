@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Customer, Gender, MaritalStatus, PaymentMethod, CustomerLevel, SoftwareType, CustomerStatus } from '../types';
 import Modal from './Modal';
@@ -11,6 +12,13 @@ import { formatCurrency, convertPersianToEnglish } from '../utils/dateFormatter'
 
 const inputClass = "mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm";
 const labelClass = "block text-sm font-medium text-gray-700 mb-1";
+
+// Regex for validation
+const PERSIAN_REGEX = /^[\u0600-\u06FF\s]+$/;
+const NATIONAL_ID_REGEX = /^\d{10}$/;
+const MOBILE_REGEX = /^09\d{9}$/;
+const IBAN_REGEX = /^IR\d{24}$/;
+
 
 interface CustomerFormModalProps {
   isOpen: boolean;
@@ -69,9 +77,9 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
                 setFormData({
                     ...getInitialState(),
                     ...customer,
-                    mobileNumbers: [...(customer.mobileNumbers || []), ''],
+                    mobileNumbers: [...(customer.mobileNumbers.length > 0 ? customer.mobileNumbers : ['']), ''],
                     emails: [...(customer.emails || []), ''],
-                    phone: [...(customer.phone || []), ''],
+                    phone: [...(customer.phone.length > 0 ? customer.phone : ['']), ''],
                 });
                 setFormattedRemainingCredit(formatCurrency(customer.remainingCredit));
             } else { // Adding a new customer, set defaults
@@ -83,6 +91,8 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
                     purchaseDate: formatDate(todayObj),
                     supportStartDate: formatDate(todayObj),
                     supportEndDate: formatDate(oneYearFromNowObj),
+                    mobileNumbers: ['09', ''],
+                    iban: 'IR',
                 };
                 setFormData(initialState);
                 setFormattedRemainingCredit(formatCurrency(initialState.remainingCredit));
@@ -99,7 +109,33 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        let processedValue = value;
+        const englishValue = convertPersianToEnglish(value);
+
+        switch (name) {
+            case 'firstName':
+            case 'lastName':
+            case 'companyName':
+            case 'jobTitle':
+            case 'activityType':
+                // Allow only Persian characters and spaces
+                processedValue = value.replace(/[^\u0600-\u06FF\s]/g, '');
+                break;
+            case 'nationalId':
+                processedValue = englishValue.replace(/[^0-9]/g, '').slice(0, 10);
+                break;
+            case 'taxCode':
+            case 'bankAccountNumber':
+                processedValue = englishValue.replace(/[^0-9]/g, '');
+                break;
+            case 'iban':
+                processedValue = 'IR' + englishValue.replace(/[^0-9a-zA-Z]/g, '').toUpperCase().replace('IR', '').slice(0, 24);
+                break;
+            default:
+                processedValue = value;
+        }
+
+        setFormData(prev => ({ ...prev, [name]: processedValue }));
     };
     
     const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,10 +155,23 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
     };
 
     const handleArrayChange = (e: React.ChangeEvent<HTMLInputElement>, index: number, field: 'mobileNumbers' | 'emails' | 'phone') => {
-        const newValues = [...formData[field]];
-        newValues[index] = e.target.value;
+        let value = e.target.value;
+        let processedValue = value;
 
-        if (index === newValues.length - 1 && e.target.value.trim() !== '') {
+        if (field === 'phone' || field === 'mobileNumbers') {
+            processedValue = convertPersianToEnglish(value).replace(/[^0-9]/g, '');
+        }
+        
+        if (field === 'mobileNumbers') {
+            if (processedValue.length > 11) {
+                processedValue = processedValue.slice(0, 11);
+            }
+        }
+
+        const newValues = [...formData[field]];
+        newValues[index] = processedValue;
+
+        if (index === newValues.length - 1 && processedValue.trim() !== '') {
             newValues.push('');
         }
         
@@ -146,17 +195,33 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
         const validationErrors: string[] = [];
         
         if (!formData.firstName.trim()) validationErrors.push('نام نمی‌تواند خالی باشد.');
+        else if (!PERSIAN_REGEX.test(formData.firstName)) validationErrors.push('نام باید فقط شامل حروف فارسی باشد.');
+
         if (!formData.lastName.trim()) validationErrors.push('نام خانوادگی نمی‌تواند خالی باشد.');
+        else if (!PERSIAN_REGEX.test(formData.lastName)) validationErrors.push('نام خانوادگی باید فقط شامل حروف فارسی باشد.');
+
         if (!formData.companyName.trim()) validationErrors.push('نام شرکت نمی‌تواند خالی باشد.');
+        else if (!PERSIAN_REGEX.test(formData.companyName)) validationErrors.push('نام شرکت باید فقط شامل حروف فارسی باشد.');
+        
+        if (formData.jobTitle.trim() && !PERSIAN_REGEX.test(formData.jobTitle)) validationErrors.push('عنوان شغلی باید فقط شامل حروف فارسی باشد.');
+        if (formData.activityType.trim() && !PERSIAN_REGEX.test(formData.activityType)) validationErrors.push('نوع فعالیت باید فقط شامل حروف فارسی باشد.');
+
         if (!formData.nationalId.trim()) validationErrors.push('کد ملی نمی‌تواند خالی باشد.');
+        else if (!NATIONAL_ID_REGEX.test(formData.nationalId)) validationErrors.push('کد ملی باید ۱۰ رقم و فقط شامل اعداد باشد.');
+
+        if (formData.iban.trim() && formData.iban !== 'IR' && !IBAN_REGEX.test(formData.iban)) {
+            validationErrors.push('شماره شبا نامعتبر است. باید با IR شروع شده و ۲۴ رقم داشته باشد.');
+        }
 
         const cleanedMobiles = formData.mobileNumbers.filter(m => m.trim() !== '');
         const cleanedEmails = formData.emails.filter(email => email.trim() !== '');
         const cleanedPhones = formData.phone.filter(p => p.trim() !== '');
-
-        if (cleanedMobiles.length === 0) {
-            validationErrors.push('وارد کردن حداقل یک شماره موبایل اجباری است.');
-        }
+        
+        cleanedMobiles.forEach(mobile => {
+            if (!MOBILE_REGEX.test(mobile)) {
+                validationErrors.push(`شماره موبایل ${mobile} نامعتبر است. باید با 09 شروع شده و ۱۱ رقم باشد.`);
+            }
+        });
 
         // Check for duplicates within the same customer entry
         if (new Set(cleanedMobiles).size !== cleanedMobiles.length) {
@@ -231,7 +296,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
                                 <input type="text" name="lastName" id="lastName" value={formData.lastName} onChange={handleChange} className={inputClass} />
                             </FormField>
                             <FormField label="کد ملی" id="nationalId">
-                                <input type="text" name="nationalId" id="nationalId" value={formData.nationalId} onChange={handleChange} className={inputClass} />
+                                <input type="text" name="nationalId" id="nationalId" value={formData.nationalId} onChange={handleChange} className={inputClass} maxLength={10} />
                             </FormField>
                             <FormField label="تاریخ تولد" id="birthDate">
                                <DatePicker name="birthDate" placeholder="تاریخ تولد" value={formData.birthDate} onChange={(date) => handleDateChange('birthDate', date)} />
@@ -276,6 +341,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
                                         onChange={(e) => handleArrayChange(e, index, 'mobileNumbers')}
                                         className={`${inputClass} mb-2`}
                                         placeholder={index === 0 ? "شماره اصلی..." : "شماره دیگر..."}
+                                        maxLength={11}
                                     />
                                 ))}
                             </div>
@@ -314,7 +380,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
                                 <input type="text" name="bankAccountNumber" id="bankAccountNumber" value={formData.bankAccountNumber} onChange={handleChange} className={inputClass} />
                             </FormField>
                              <FormField label="شماره شبا" id="iban">
-                                <input type="text" name="iban" id="iban" value={formData.iban} onChange={handleChange} className={inputClass} />
+                                <input type="text" name="iban" id="iban" value={formData.iban} onChange={handleChange} className={inputClass} maxLength={26} />
                             </FormField>
                              <FormField label="مانده اعتبار (ریال)" id="remainingCredit">
                                 <input

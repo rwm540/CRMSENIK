@@ -1,4 +1,3 @@
-
 import { ContractStatus, SupportContractStatus } from '../types';
 import jalaali from 'jalaali-js';
 
@@ -152,118 +151,16 @@ export const isDateInRange = (date: Date, startDate: Date | null, endDate: Date 
     return checkTime >= startTime && checkTime <= endTime;
 }
 
-export const exportReportToCSV = (
-  reportType: 'customers' | 'contracts' | 'tickets',
-  data: any[],
-  columns: string[],
-  filters: any
-) => {
-  const reportTitles = {
-    customers: 'گزارش مشتریان',
-    contracts: 'گزارش قراردادها',
-    tickets: 'گزارش تیکت‌ها',
-  };
+// Hash a string using SHA-256
+export const sha256 = async (message: string): Promise<string> => {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+};
 
-  let csvContent = '';
-  const toPersian = (n: any) => toPersianDigits(String(n));
-
-  // 1. Add Header Info
-  csvContent += `"${reportTitles[reportType]}"\n`;
-  csvContent += `تاریخ گزارش:,"${toPersian(formatJalaali(new Date()))}"\n`;
-  if (filters.startDate || filters.endDate) {
-    csvContent += `بازه زمانی:,"از ${filters.startDate ? toPersian(filters.startDate) : 'ابتدا'} تا ${filters.endDate ? toPersian(filters.endDate) : 'انتها'}"\n`;
-  }
-  csvContent += '\n'; // Spacer
-
-  // 2. Add KPIs
-  csvContent += '"شاخص‌های کلیدی عملکرد (KPIs)"\n';
-  const kpis: string[][] = [];
-
-  if (reportType === 'customers' && data.length > 0) {
-    kpis.push(['تعداد کل مشتریان در گزارش', toPersian(data.length)]);
-    const statusCounts = data.reduce((acc, row) => {
-      acc[row.status] = (acc[row.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک وضعیت:']);
-    for (const status in statusCounts) {
-      kpis.push([`  - ${status}`, toPersian(statusCounts[status])]);
-    }
-    const levelCounts = data.reduce((acc, row) => {
-      acc[row.level] = (acc[row.level] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک سطح:']);
-    for (const level in levelCounts) {
-      kpis.push([`  - سطح ${level}`, toPersian(levelCounts[level])]);
-    }
-  } else if (reportType === 'contracts' && data.length > 0) {
-    kpis.push(['تعداد کل قراردادها', toPersian(data.length)]);
-    const totalValue = data.reduce((sum, row) => sum + parseFloat(String(row.amount || '0').replace(/,/g, '')), 0);
-    kpis.push(['مجموع مبلغ قراردادها (ریال)', formatCurrency(totalValue)]);
-    const typeCounts = data.reduce((acc, row) => {
-      acc[row.type] = (acc[row.type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک نوع قرارداد:']);
-    for (const type in typeCounts) {
-      kpis.push([`  - ${type}`, toPersian(typeCounts[type])]);
-    }
-     const statusCounts = data.reduce((acc, row) => {
-      acc[row.status] = (acc[row.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک وضعیت:']);
-    for (const status in statusCounts) {
-      kpis.push([`  - ${status}`, toPersian(statusCounts[status])]);
-    }
-  } else if (reportType === 'tickets' && data.length > 0) {
-    kpis.push(['تعداد کل تیکت‌ها', toPersian(data.length)]);
-    const statusCounts = data.reduce((acc, row) => {
-      acc[row.status] = (acc[row.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک وضعیت:']);
-    for (const status in statusCounts) {
-      kpis.push([`  - ${status}`, toPersian(statusCounts[status])]);
-    }
-     const priorityCounts = data.reduce((acc, row) => {
-      acc[row.priority] = (acc[row.priority] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    kpis.push(['تفکیک اولویت:']);
-    for (const priority in priorityCounts) {
-      kpis.push([`  - ${priority}`, toPersian(priorityCounts[priority])]);
-    }
-  }
-
-  kpis.forEach(row => {
-    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
-  });
-  csvContent += '\n'; // Spacer
-
-  // 3. Add Data Table
-  csvContent += '"جزئیات گزارش"\n';
-  // Add column headers
-  csvContent += columns.map(col => `"${col}"`).join(',') + '\n';
-  // Add data rows
-  data.forEach(row => {
-    const rowValues = Object.values(row).map(val => `"${toPersian(val)}"`);
-    csvContent += rowValues.join(',') + '\n';
-  });
-
-  // 4. Create and download the file
-  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-  const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  if (link.download !== undefined) {
-    const url = URL.createObjectURL(blob);
-    const filename = `report_${reportType}_${toPersian(formatJalaali(new Date()))}.csv`;
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
+// Generate a 6-digit numeric OTP
+export const generateOtp = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
