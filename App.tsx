@@ -53,6 +53,7 @@ const convertKeysToSnakeCase = (obj: any): any => {
     return obj;
 };
 
+// FIX: Added missing menu item titles to satisfy the Record<MenuItemId, string> type.
 const pageTitles: Record<MenuItemId, string> = {
   dashboard: 'داشبورد',
   customers: 'مدیریت مشتریان',
@@ -61,6 +62,9 @@ const pageTitles: Record<MenuItemId, string> = {
   tickets: 'مدیریت تیکت‌ها',
   reports: 'گزارشات',
   referrals: 'ارجاعات',
+  attendance: 'حضور و غیاب',
+  leave: 'مرخصی‌ها',
+  missions: 'ماموریت‌ها',
 };
 
 const App: React.FC = () => {

@@ -3,14 +3,12 @@ import { PurchaseContract, ContractStatus, Customer, User } from '../types';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { getCalculatedStatus, toPersianDigits } from '../utils/dateFormatter';
-import { PaperClipIcon } from './icons/PaperClipIcon';
 
 interface PurchaseContractTableProps {
   contracts: PurchaseContract[];
   customers: Customer[];
   onEdit: (contract: PurchaseContract) => void;
   onDelete: (contractId: number) => void;
-  onShowAttachments: (urls: string[]) => void;
   selectedIds: number[];
   onToggleSelect: (id: number) => void;
   onToggleSelectAll: () => void;
@@ -24,7 +22,7 @@ const statusStyles: { [key in ContractStatus]: string } = {
   'لغو شده': 'bg-red-100 text-red-700',
 };
 
-const PurchaseContractTable: React.FC<PurchaseContractTableProps> = ({ contracts, customers, onEdit, onDelete, onShowAttachments, selectedIds, onToggleSelect, onToggleSelectAll, currentUser }) => {
+const PurchaseContractTable: React.FC<PurchaseContractTableProps> = ({ contracts, customers, onEdit, onDelete, selectedIds, onToggleSelect, onToggleSelectAll, currentUser }) => {
   const allOnPageSelected = contracts.length > 0 && contracts.every(c => selectedIds.includes(c.id));
 
   const getCustomerName = (customerId: number | null) => {
@@ -73,11 +71,6 @@ const PurchaseContractTable: React.FC<PurchaseContractTableProps> = ({ contracts
               </div>
               <div className="flex items-center justify-end pt-2">
                 <div className="flex items-center gap-2">
-                  {contract.attachments && contract.attachments.length > 0 && (
-                    <button onClick={() => onShowAttachments(contract.attachments)} className="p-2 text-gray-500 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors">
-                      <PaperClipIcon />
-                    </button>
-                  )}
                   <button onClick={() => onEdit(contract)} className="p-2 text-yellow-500 hover:text-yellow-600 rounded-full hover:bg-yellow-100 transition-colors">
                     <EditIcon />
                   </button>
@@ -140,11 +133,6 @@ const PurchaseContractTable: React.FC<PurchaseContractTableProps> = ({ contracts
                   <td className="px-6 py-4 text-gray-500 font-mono">{toPersianDigits(contract.contractEndDate)}</td>
                   <td className="px-6 py-4 text-left">
                     <div className="flex items-center justify-end gap-2">
-                       {contract.attachments && contract.attachments.length > 0 && (
-                        <button onClick={() => onShowAttachments(contract.attachments)} className="p-2 text-gray-500 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors" title="نمایش پیوست‌ها">
-                          <PaperClipIcon />
-                        </button>
-                      )}
                       <button onClick={() => onEdit(contract)} className="p-2 text-yellow-500 hover:text-yellow-600 rounded-full hover:bg-yellow-100 transition-colors" title="ویرایش">
                         <EditIcon />
                       </button>

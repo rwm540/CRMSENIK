@@ -290,21 +290,19 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
             case 'customers':
                 csvRows.push(['مجموع مشتریان', reportData.length]);
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const levelCounts = reportData.reduce((acc, c) => {
+                const levelCounts = reportData.reduce((acc: Record<string, number>, c: any) => {
                     const key = String(c.level);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک سطح --']);
                 Object.entries(levelCounts).forEach(([level, count]) => csvRows.push([level, count]));
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const statusCountsCust = reportData.reduce((acc, c) => {
+                const statusCountsCust = reportData.reduce((acc: Record<string, number>, c: any) => {
                     const key = String(c.status);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک وضعیت --']);
                 Object.entries(statusCountsCust).forEach(([status, count]) => csvRows.push([status, count]));
                 break;
@@ -316,21 +314,19 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
                 csvRows.push(['مجموع قراردادها', reportData.length]);
                 csvRows.push(['ارزش کل قراردادها (ریال)', totalValue.toLocaleString('fa-IR')]);
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const statusCountsCont = reportData.reduce((acc, c) => {
+                const statusCountsCont = reportData.reduce((acc: Record<string, number>, c: any) => {
                     const key = String(c.status);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک وضعیت --']);
                 Object.entries(statusCountsCont).forEach(([status, count]) => csvRows.push([status, count]));
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const typeCounts = reportData.reduce((acc, c) => {
+                const typeCounts = reportData.reduce((acc: Record<string, number>, c: any) => {
                     const key = String(c.type);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک نوع --']);
                 Object.entries(typeCounts).forEach(([type, count]) => csvRows.push([type, count]));
                 break;
@@ -338,30 +334,27 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ customers, users, purchaseCon
             case 'tickets':
                 csvRows.push(['مجموع تیکت ها', reportData.length]);
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const statusCountsTick = reportData.reduce((acc, t) => {
+                const statusCountsTick = reportData.reduce((acc: Record<string, number>, t: any) => {
                     const key = String(t.status);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک وضعیت --']);
                 Object.entries(statusCountsTick).forEach(([status, count]) => csvRows.push([status, count]));
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const priorityCounts = reportData.reduce((acc, t) => {
+                const priorityCounts = reportData.reduce((acc: Record<string, number>, t: any) => {
                     const key = String(t.priority);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تفکیک اولویت --']);
                 Object.entries(priorityCounts).forEach(([priority, count]) => csvRows.push([priority, count]));
                 // FIX: Explicitly type accumulator in reduce to avoid type errors.
-                const specialistCounts = reportData.reduce((acc, t) => {
+                const specialistCounts = reportData.reduce((acc: Record<string, number>, t: any) => {
                     const key = String(t.specialist);
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
-                // FIX: Explicitly type accumulator to avoid type errors with Object.entries.
-                }, {} as Record<string, number>);
+                }, {});
                 csvRows.push(['-- تیکت به ازای هر کارشناس --']);
                 Object.entries(specialistCounts).forEach(([specialist, count]) => csvRows.push([specialist, count]));
                 break;

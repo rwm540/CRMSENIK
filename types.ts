@@ -98,7 +98,6 @@ export interface PurchaseContract {
     paymentMethods: PaymentMethod[];
     paymentStatus: PaymentStatus;
     invoiceNumber: string;
-    attachments: string[];
     deliverySchedule: string;
     moduleList: string;
     terminationConditions: string;
@@ -155,7 +154,6 @@ export interface Ticket {
     type: TicketType;
     channel: TicketChannel;
     assignedToUsername: string;
-    attachments: string[];
     editableUntil: string;
     workSessionStartedAt?: string;
     totalWorkDuration: number;

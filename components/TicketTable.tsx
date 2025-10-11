@@ -3,7 +3,6 @@ import { Ticket, Customer, User, SupportContract } from '../types';
 import { toPersianDigits } from '../utils/dateFormatter';
 import TicketActions from './TicketActions';
 import Avatar from './Avatar';
-import { PaperClipIcon } from './icons/PaperClipIcon';
 
 interface TicketTableProps {
   tickets: (Ticket & { score: number })[];
@@ -13,7 +12,6 @@ interface TicketTableProps {
   onEdit: (ticket: Ticket) => void;
   onRefer: (ticket: Ticket) => void;
   onToggleWork: (ticketId: number) => void;
-  onShowAttachments: (attachments: string[]) => void;
   isReferralTable: boolean;
   emptyMessage?: string;
   selectedIds: number[];
@@ -33,7 +31,7 @@ const getScoreColor = (score: number) => {
 };
 
 const TicketTable: React.FC<TicketTableProps> = (props) => {
-  const { tickets, customers, users, onEdit, onRefer, onToggleWork, onShowAttachments, selectedIds, onToggleSelect, onToggleSelectAll, currentUser, onDelete, onReopen, onExtendEditTime } = props;
+  const { tickets, customers, users, onEdit, selectedIds, onToggleSelect, onToggleSelectAll } = props;
 
   const allOnPageSelected = tickets.length > 0 && tickets.every(t => selectedIds.includes(t.id));
 
@@ -116,7 +114,6 @@ const TicketTable: React.FC<TicketTableProps> = (props) => {
                             <td className="px-6 py-4 font-medium text-slate-800">
                                 <div className="flex items-center gap-2">
                                     <span>{ticket.title}</span>
-                                    {ticket.attachments.length > 0 && <button onClick={(e) => { e.stopPropagation(); onShowAttachments(ticket.attachments); }} title="نمایش پیوست‌ها"><PaperClipIcon /></button>}
                                 </div>
                             </td>
                             <td className="px-6 py-4">{getCustomerName(ticket.customerId)}</td>

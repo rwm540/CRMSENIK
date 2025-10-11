@@ -11,7 +11,6 @@ import Pagination from '../components/Pagination';
 import { toPersianDigits } from '../utils/dateFormatter';
 import { TrashIcon } from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
-import AttachmentPreviewModal from '../components/AttachmentPreviewModal';
 
 interface PurchaseContractsProps {
   contracts: PurchaseContract[];
@@ -31,7 +30,6 @@ const PurchaseContracts: React.FC<PurchaseContractsProps> = ({ contracts, users,
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [previewAttachments, setPreviewAttachments] = useState<string[] | null>(null);
 
   // State for confirmation modal
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
@@ -155,7 +153,6 @@ const PurchaseContracts: React.FC<PurchaseContractsProps> = ({ contracts, users,
             customers={customers}
             onEdit={handleOpenModal} 
             onDelete={(contractId) => setItemToDelete(contractId)}
-            onShowAttachments={(urls) => setPreviewAttachments(urls)}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             onToggleSelectAll={handleToggleSelectAll}
@@ -186,11 +183,6 @@ const PurchaseContracts: React.FC<PurchaseContractsProps> = ({ contracts, users,
           onConfirm={handleConfirmDelete}
           title="تایید حذف"
           message={itemToDelete ? `آیا از حذف این قرارداد اطمینان دارید؟` : `آیا از حذف ${toPersianDigits(itemsToDelete?.length || 0)} قرارداد انتخاب شده اطمینان دارید؟`}
-        />
-        <AttachmentPreviewModal 
-            isOpen={!!previewAttachments}
-            onClose={() => setPreviewAttachments(null)}
-            attachments={previewAttachments || []}
         />
     </>
   );

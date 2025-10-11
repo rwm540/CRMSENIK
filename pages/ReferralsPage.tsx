@@ -11,7 +11,6 @@ import { UserCheckIcon } from '../components/icons/UserCheckIcon';
 import { toPersianDigits } from '../utils/dateFormatter';
 import { TrashIcon } from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
-import AttachmentPreviewModal from '../components/AttachmentPreviewModal';
 
 
 interface ReferralsPageProps {
@@ -40,7 +39,6 @@ const ReferralsPage: React.FC<ReferralsPageProps> = ({ referrals, currentUser, u
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [itemsToDelete, setItemsToDelete] = useState<number[] | null>(null);
-  const [previewAttachments, setPreviewAttachments] = useState<string[] | null>(null);
 
   const handleOpenModal = (ticket: Ticket) => {
     setEditingTicket(ticket);
@@ -235,7 +233,6 @@ const ReferralsPage: React.FC<ReferralsPageProps> = ({ referrals, currentUser, u
           onRefer={handleOpenReferModal}
           onToggleWork={(ticketId) => onToggleWork(ticketId)}
           onExtendEditTime={onExtendEditTime}
-          onShowAttachments={setPreviewAttachments}
           isReferralTable={true}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
@@ -263,7 +260,6 @@ const ReferralsPage: React.FC<ReferralsPageProps> = ({ referrals, currentUser, u
             currentUser={currentUser}
             referrals={referrals}
             supportContracts={supportContracts}
-            onShowAttachments={setPreviewAttachments}
           />
         )}
         
@@ -284,11 +280,6 @@ const ReferralsPage: React.FC<ReferralsPageProps> = ({ referrals, currentUser, u
           onConfirm={handleConfirmDelete}
           title="تایید حذف"
           message={`آیا از حذف ${toPersianDigits(itemsToDelete?.length || 0)} تیکت انتخاب شده اطمینان دارید؟ این عمل قابل بازگشت نیست.`}
-        />
-        <AttachmentPreviewModal 
-            isOpen={!!previewAttachments}
-            onClose={() => setPreviewAttachments(null)}
-            attachments={previewAttachments || []}
         />
       </main>
     </div>

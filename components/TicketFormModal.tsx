@@ -4,10 +4,7 @@ import Modal from './Modal';
 import Alert from './Alert';
 import SearchableSelect from './SearchableSelect';
 import ReferralHistoryTimeline from './ReferralHistoryTimeline';
-import { supabase, BUCKET_NAME } from '../supabaseClient';
 import { LoadingSpinnerIcon } from './icons/LoadingSpinnerIcon';
-import { TrashIcon } from './icons/TrashIcon';
-import { FileUploadIcon } from './icons/FileUploadIcon';
 
 interface TicketFormModalProps {
   isOpen: boolean;
@@ -19,7 +16,6 @@ interface TicketFormModalProps {
   currentUser: User;
   referrals: Referral[];
   supportContracts: SupportContract[];
-  onShowAttachments?: (attachments: string[]) => void;
 }
 
 // FIX: Updated the getInitialState function to return a complete `Omit<Ticket, 'id'>` object by adding dummy values for properties that are generated on save. This resolves a TypeScript error where the formData for a new ticket was missing properties expected by the onSave handler.
@@ -32,7 +28,6 @@ const getInitialState = (currentUser: User): Omit<Ticket, 'id'> => ({
   type: 'سایر',
   channel: 'تلفن',
   assignedToUsername: currentUser.username,
-  attachments: [],
   workSessionStartedAt: undefined,
   totalWorkDuration: 0,
   // Properties for new tickets, will be set on the server/App.tsx
@@ -42,16 +37,7 @@ const getInitialState = (currentUser: User): Omit<Ticket, 'id'> => ({
   editableUntil: '',
 });
 
-const getFilenameFromUrl = (url: string) => {
-    try {
-        const decodedUrl = decodeURIComponent(url);
-        return decodedUrl.split('/').pop()?.split('?')[0] || 'فایل پیوست';
-    } catch (e) {
-        return url.split('/').pop()?.split('?')[0] || 'فایل پیوست';
-    }
-};
-
-const TicketFormModal: React.FC<TicketFormModalProps> = ({ isOpen, onClose, onSave, ticket, customers, users, currentUser, referrals, supportContracts, onShowAttachments }) => {
+const TicketFormModal: React.FC<TicketFormModalProps> = ({ isOpen, onClose, onSave, ticket, customers, users, currentUser, referrals }) => {
   const [formData, setFormData] = useState(getInitialState(currentUser));
   const [errors, setErrors] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,33 +71,6 @@ const TicketFormModal: React.FC<TicketFormModalProps> = ({ isOpen, onClose, onSa
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsSubmitting(true);
-    const uploadPromises = Array.from(files).map(async file => {
-      const filePath = `${currentUser.username}/tickets/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-      return data.publicUrl;
-    });
-
-    try {
-      const newUrls = await Promise.all(uploadPromises);
-      setFormData(prev => ({ ...prev, attachments: [...prev.attachments, ...newUrls] }));
-    } catch (error: any) {
-      setErrors([`خطا در آپلود فایل: ${error.message}`]);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleRemoveAttachment = (urlToRemove: string) => {
-    setFormData(prev => ({ ...prev, attachments: prev.attachments.filter(url => url !== urlToRemove) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,43 +123,6 @@ const TicketFormModal: React.FC<TicketFormModalProps> = ({ isOpen, onClose, onSa
               <select name="channel" value={formData.channel} onChange={handleChange} className="w-full bg-gray-50 border border-gray-300 rounded-md py-2 px-3" disabled={isReadOnly}>
                 {ticketChannels.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">پیوست‌ها</label>
-                {!isReadOnly && (
-                    <>
-                        <input type="file" onChange={handleFileUpload} multiple id="file-upload" className="hidden" disabled={isSubmitting}/>
-                        <label htmlFor="file-upload" className="cursor-pointer flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-md hover:bg-gray-50">
-                            <FileUploadIcon /><span>برای آپلود فایل کلیک کنید یا فایل‌ها را اینجا بکشید</span>
-                        </label>
-                    </>
-                )}
-                {formData.attachments.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                        {formData.attachments.map(url => (
-                            <div key={url} className="flex items-center justify-between text-sm bg-gray-100 p-2 rounded">
-                                 <button 
-                                    type="button" 
-                                    onClick={() => onShowAttachments?.([url])} 
-                                    className="text-cyan-600 hover:underline truncate text-right flex-grow"
-                                    title="مشاهده پیوست"
-                                >
-                                    {getFilenameFromUrl(url)}
-                                </button>
-                                {!isReadOnly && (
-                                    <button 
-                                        type="button" 
-                                        onClick={() => handleRemoveAttachment(url)}
-                                        className="p-1 text-red-500 hover:bg-red-100 rounded-full flex-shrink-0"
-                                        title="حذف پیوست"
-                                    >
-                                        <TrashIcon />
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
             {referralHistory.length > 0 && (
               <div>

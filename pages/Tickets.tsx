@@ -13,7 +13,6 @@ import { calculateTicketScore } from '../utils/ticketScoring';
 import { UserCheckIcon } from '../components/icons/UserCheckIcon';
 import { TrashIcon } from '../components/icons/TrashIcon';
 import ConfirmationModal from '../components/ConfirmationModal';
-import AttachmentPreviewModal from '../components/AttachmentPreviewModal';
 
 interface TicketsProps {
   tickets: Ticket[];
@@ -44,7 +43,6 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [itemsToDelete, setItemsToDelete] = useState<number[] | null>(null);
-  const [previewAttachments, setPreviewAttachments] = useState<string[] | null>(null);
   
   const referredTicketIds = useMemo(() => new Set(referrals.map(r => r.ticket.id)), [referrals]);
 
@@ -283,7 +281,6 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
                 onEdit={handleOpenModal}
                 onRefer={handleOpenReferModal}
                 onToggleWork={(ticketId) => onToggleWork(ticketId)}
-                onShowAttachments={setPreviewAttachments}
                 isReferralTable={false}
                 emptyMessage={showCompleted ? 'هیچ تیکت اتمام یافته‌ای برای نمایش وجود ندارد.' : 'هیچ تیکت فعالی یافت نشد. برای شروع یک تیکت جدید ایجاد کنید.'}
                 selectedIds={selectedIds}
@@ -317,7 +314,6 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           currentUser={currentUser}
           referrals={referrals}
           supportContracts={supportContracts}
-          onShowAttachments={setPreviewAttachments}
         />
         <ReferTicketModal
           isOpen={isReferModalOpen}
@@ -333,11 +329,6 @@ const Tickets: React.FC<TicketsProps> = ({ tickets, referrals, customers, users,
           onConfirm={handleConfirmDelete}
           title="تایید حذف"
           message={`آیا از حذف ${toPersianDigits(itemsToDelete?.length || 0)} تیکت انتخاب شده اطمینان دارید؟ این عمل قابل بازگشت نیست.`}
-        />
-        <AttachmentPreviewModal 
-            isOpen={!!previewAttachments}
-            onClose={() => setPreviewAttachments(null)}
-            attachments={previewAttachments || []}
         />
       </main>
     </div>

@@ -5,10 +5,7 @@ import DatePicker from './DatePicker';
 import Alert from './Alert';
 import { formatCurrency, convertPersianToEnglish, getPurchaseContractStatusByDate } from '../utils/dateFormatter';
 import SearchableSelect from './SearchableSelect';
-import { supabase, BUCKET_NAME } from '../supabaseClient';
 import { LoadingSpinnerIcon } from './icons/LoadingSpinnerIcon';
-import { FileUploadIcon } from './icons/FileUploadIcon';
-import { TrashIcon } from './icons/TrashIcon';
 
 interface PurchaseContractFormModalProps {
   isOpen: boolean;
@@ -57,7 +54,6 @@ const getInitialState = (currentUser: User, contracts: PurchaseContract[]): Omit
     paymentMethods: [],
     paymentStatus: "در حال پیگیری",
     invoiceNumber: '',
-    attachments: [],
     deliverySchedule: '',
     moduleList: '',
     terminationConditions: '',
@@ -82,15 +78,6 @@ const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ lab
 const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
     <h4 className="col-span-full text-md font-semibold text-slate-700 border-b pb-2 mb-2">{title}</h4>
 );
-
-const getFilenameFromUrl = (url: string) => {
-    try {
-        const decodedUrl = decodeURIComponent(url);
-        return decodedUrl.split('/').pop()?.split('?')[0] || 'فایل پیوست';
-    } catch (e) {
-        return url.split('/').pop()?.split('?')[0] || 'فایل پیوست';
-    }
-};
 
 const PurchaseContractFormModal: React.FC<PurchaseContractFormModalProps> = ({ isOpen, onClose, onSave, contract, users, contracts, customers, currentUser }) => {
   const [formData, setFormData] = useState(() => getInitialState(currentUser, contracts));
@@ -138,55 +125,6 @@ const PurchaseContractFormModal: React.FC<PurchaseContractFormModalProps> = ({ i
     const numericValue = parseInt(convertPersianToEnglish(rawValue).replace(/[^0-9]/g, ''), 10) || 0;
     setFormData(prev => ({ ...prev, [field]: numericValue }));
   };
-
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-
-        setIsSubmitting(true);
-        const currentAttachments = [...formData.attachments];
-        
-        try {
-            for (const file of Array.from(files)) {
-                const fileExt = file.name.split('.').pop();
-                const fileName = `contract-${formData.contractId}-${Date.now()}.${fileExt}`;
-                const filePath = `${currentUser.username}/${fileName}`;
-                
-                const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
-
-                if (uploadError) {
-                    throw new Error(`خطا در آپلود ${file.name}: ${uploadError.message}`);
-                }
-                
-                const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-                currentAttachments.push(data.publicUrl);
-            }
-            setFormData(prev => ({...prev, attachments: currentAttachments}));
-        } catch (error) {
-            // FIX: The caught error is of type 'unknown'. Cast to 'any' to access the 'message' property.
-            setErrors(prev => [...prev, (error as any).message]);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-    
-    const handleRemoveAttachment = async (urlToRemove: string) => {
-        const isConfirmed = window.confirm('آیا از حذف این پیوست اطمینان دارید؟');
-        if (!isConfirmed) return;
-
-        setIsSubmitting(true);
-        try {
-            const filePath = new URL(urlToRemove).pathname.split(`/${BUCKET_NAME}/`)[1];
-            await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-            setFormData(prev => ({ ...prev, attachments: prev.attachments.filter(url => url !== urlToRemove) }));
-        } catch (error) {
-            // FIX: The caught error is of type 'unknown'. Cast to 'any' to access the 'message' property for better feedback.
-            setErrors(prev => [...prev, `خطا در حذف پیوست از سرور. ${(error as any).message}`]);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,38 +203,6 @@ const PurchaseContractFormModal: React.FC<PurchaseContractFormModalProps> = ({ i
                     </select>
                 </FormField>
                 <div className="lg:col-span-3"><FormField label="مراحل پرداخت"><input name="paymentStages" value={formData.paymentStages} onChange={handleChange} className={inputClass} /></FormField></div>
-            </div>
-            
-            {/* Attachments */}
-            <div>
-                <h4 className="col-span-full text-md font-semibold text-slate-700 border-b pb-2 mb-4">پیوست ها</h4>
-                <div className="space-y-3">
-                     <input type="file" multiple onChange={handleFileUpload} id="contract-attachments-upload" className="hidden" disabled={isSubmitting} />
-                     <label htmlFor="contract-attachments-upload" className={`cursor-pointer flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-md ${isSubmitting ? 'bg-gray-200 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
-                        {isSubmitting ? <LoadingSpinnerIcon className="h-6 w-6 text-cyan-600" /> : <FileUploadIcon />}
-                        <span>{isSubmitting ? 'در حال آپلود...' : 'افزودن پیوست جدید'}</span>
-                    </label>
-                    {formData.attachments.length > 0 && (
-                        <div className="mt-2 space-y-2">
-                            {formData.attachments.map(url => (
-                                <div key={url} className="flex items-center justify-between text-sm bg-gray-100 p-2 rounded">
-                                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:underline truncate text-right flex-grow" title={getFilenameFromUrl(url)}>
-                                        {getFilenameFromUrl(url)}
-                                    </a>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => handleRemoveAttachment(url)}
-                                        className="p-1 text-red-500 hover:bg-red-100 rounded-full flex-shrink-0 ml-2"
-                                        title="حذف پیوست"
-                                        disabled={isSubmitting}
-                                    >
-                                        <TrashIcon />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
             </div>
 
           </div>
