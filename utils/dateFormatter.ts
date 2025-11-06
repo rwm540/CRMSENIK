@@ -151,16 +151,107 @@ export const isDateInRange = (date: Date, startDate: Date | null, endDate: Date 
     return checkTime >= startTime && checkTime <= endTime;
 }
 
-// Hash a string using SHA-256
-export const sha256 = async (message: string): Promise<string> => {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
+// Helper to sanitize CSV cell content for safe export
+const sanitizeCsvCell = (cellData: any): string => {
+    if (cellData === undefined || cellData === null) {
+        return '""';
+    }
+    const str = String(cellData);
+    // Escape double quotes by doubling them, then wrap the whole thing in quotes.
+    const escapedStr = str.replace(/"/g, '""');
+    return `"${escapedStr}"`;
 };
 
-// Generate a 6-digit numeric OTP
-export const generateOtp = (): string => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+
+export const exportReportToCSV = (
+  reportType: 'customers' | 'contracts' | 'tickets',
+  data: any[],
+  columns: { header: string; accessor: string }[],
+  filters: any
+) => {
+  const reportTitles = {
+    customers: 'گزارش مشتریان',
+    contracts: 'گزارش قراردادها',
+    tickets: 'گزارش تیکت‌ها',
+  };
+
+  let csvContent = '';
+  const toPersian = (n: any) => n === undefined || n === null ? '' : toPersianDigits(String(n));
+  const createCsvRow = (cells: any[]): string => cells.map(sanitizeCsvCell).join(',') + '\n';
+
+  // Section 1: Report Metadata
+  csvContent += createCsvRow([reportTitles[reportType]]);
+  csvContent += createCsvRow(['تاریخ گزارش:', toPersian(formatJalaali(new Date()))]);
+  if (filters.startDate || filters.endDate) {
+    const range = `از ${filters.startDate ? toPersian(filters.startDate) : 'ابتدا'} تا ${filters.endDate ? toPersian(filters.endDate) : 'انتها'}`;
+    csvContent += createCsvRow(['بازه زمانی:', range]);
+  }
+  csvContent += '\n'; // Spacer
+
+  // Section 2: Summary / KPIs
+  if (data.length > 0) {
+    csvContent += createCsvRow(['خلاصه گزارش (KPIs)']);
+    csvContent += createCsvRow(['شاخص', 'مقدار']);
+
+    if (reportType === 'customers') {
+      csvContent += createCsvRow(['تعداد کل مشتریان', toPersian(data.length)]);
+      const statusCounts = data.reduce((acc, row) => ({ ...acc, [row.status]: (acc[row.status] || 0) + 1 }), {});
+      Object.entries(statusCounts).forEach(([status, count]) => {
+          csvContent += createCsvRow([`تعداد مشتریان ${status}`, toPersian(count as number)]);
+      });
+      const levelCounts = data.reduce((acc, row) => ({ ...acc, [row.level]: (acc[row.level] || 0) + 1 }), {});
+      Object.entries(levelCounts).forEach(([level, count]) => {
+          csvContent += createCsvRow([`تعداد مشتریان سطح ${level}`, toPersian(count as number)]);
+      });
+    } else if (reportType === 'contracts') {
+      const totalValue = data.reduce((sum, row) => {
+        const numericAmount = parseFloat(convertPersianToEnglish(String(row.amount || '0')).replace(/,/g, ''));
+        return sum + (isNaN(numericAmount) ? 0 : numericAmount);
+      }, 0);
+      csvContent += createCsvRow(['تعداد کل قراردادها:', toPersian(data.length)]);
+      csvContent += createCsvRow(['مجموع مبلغ کل (ریال):', toPersian(formatCurrency(totalValue))]);
+      const typeCounts = data.reduce((acc, row) => ({ ...acc, [row.type]: (acc[row.type] || 0) + 1 }), {});
+      Object.entries(typeCounts).forEach(([type, count]) => {
+          csvContent += createCsvRow([`تعداد قراردادهای ${type}`, toPersian(count as number)]);
+      });
+      const statusCounts = data.reduce((acc, row) => ({ ...acc, [row.status]: (acc[row.status] || 0) + 1 }), {});
+       Object.entries(statusCounts).forEach(([status, count]) => {
+          csvContent += createCsvRow([`تعداد قراردادهای ${status}`, toPersian(count as number)]);
+      });
+    } else if (reportType === 'tickets') {
+      csvContent += createCsvRow(['تعداد کل تیکت‌ها:', toPersian(data.length)]);
+      const statusCounts = data.reduce((acc, row) => ({ ...acc, [row.status]: (acc[row.status] || 0) + 1 }), {});
+      Object.entries(statusCounts).forEach(([status, count]) => {
+          csvContent += createCsvRow([`تعداد تیکت‌های ${status}`, toPersian(count as number)]);
+      });
+      const priorityCounts = data.reduce((acc, row) => ({ ...acc, [row.priority]: (acc[row.priority] || 0) + 1 }), {});
+      Object.entries(priorityCounts).forEach(([priority, count]) => {
+          csvContent += createCsvRow([`تعداد تیکت‌های با اولویت ${priority}`, toPersian(count as number)]);
+      });
+    }
+    csvContent += '\n\n'; // Extra spacing before data
+  }
+
+  // Section 3: Data Table
+  csvContent += createCsvRow(['جزئیات داده‌ها']);
+  csvContent += createCsvRow(columns.map(col => col.header));
+  data.forEach(row => {
+    const rowValues = columns.map(col => toPersian(row[col.accessor]));
+    csvContent += createCsvRow(rowValues);
+  });
+
+  // Section 4: File Download
+  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // BOM for UTF-8 Excel compatibility
+  const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob);
+    const filename = `report_${reportType}_${toPersian(formatJalaali(new Date()))}.csv`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 };

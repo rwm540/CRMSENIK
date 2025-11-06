@@ -1,10 +1,10 @@
 // types.ts
 
 // User Management
-// FIX: Added HR menu item IDs to integrate new pages.
-export type MenuItemId = 'dashboard' | 'customers' | 'users' | 'contracts' | 'tickets' | 'reports' | 'referrals' | 'attendance' | 'leave' | 'missions';
-// FIX: Standardized 'مسئول پشتیبان' to 'مسئول پشتیبانی' for consistency with specialist roles.
-export type UserRole = 'مدیر' | 'مسئول فروش' | 'مسئول پشتیبانی' | 'مسئول برنامه نویس' | 'کارشناس فروش' | 'کارشناس پشتیبانی' | 'کارشناس برنامه نویس';
+// FIX: Added 'introductions' menu item ID for the new customer introduction feature.
+export type MenuItemId = 'dashboard' | 'customers' | 'users' | 'contracts' | 'tickets' | 'reports' | 'referrals' | 'attendance' | 'leave' | 'missions' | 'introductions';
+// FIX: Changed 'مسئول پشتیبانی' to 'مسئول پشتیبان' to match the database schema.
+export type UserRole = 'مدیر' | 'مسئول فروش' | 'مسئول پشتیبان' | 'مسئول برنامه نویس' | 'کارشناس فروش' | 'کارشناس پشتیبانی' | 'کارشناس برنامه نویس';
 
 export interface User {
   id: number;
@@ -12,8 +12,6 @@ export interface User {
   lastName: string;
   username: string;
   password?: string; // Password is optional when reading user data
-  otpHash?: string | null;
-  otpExpiresAt?: string | null;
   accessibleMenus: MenuItemId[];
   role: UserRole;
 }
@@ -98,6 +96,8 @@ export interface PurchaseContract {
     paymentMethods: PaymentMethod[];
     paymentStatus: PaymentStatus;
     invoiceNumber: string;
+    signedContractPdf: string;
+    salesInvoice: string;
     deliverySchedule: string;
     moduleList: string;
     terminationConditions: string;
@@ -154,9 +154,11 @@ export interface Ticket {
     type: TicketType;
     channel: TicketChannel;
     assignedToUsername: string;
+    attachments: string[];
     editableUntil: string;
     workSessionStartedAt?: string;
     totalWorkDuration: number;
+    score?: number;
 }
 
 export interface Referral {
@@ -168,31 +170,28 @@ export interface Referral {
     ticket: Ticket; // Hydrated in App.tsx
 }
 
-// FIX: Added missing HR Management types to resolve multiple import errors.
 // HR Management
 export type AttendanceType = 'ورود' | 'خروج';
-
 export interface AttendanceRecord {
     id: number;
     userId: number;
-    timestamp: string; // ISO string
+    timestamp: string;
     type: AttendanceType;
 }
 
 export type LeaveType = 'روزانه' | 'ساعتی';
 export type LeaveRequestStatus = 'در انتظار تایید' | 'تایید شده' | 'رد شده';
-
 export interface LeaveRequest {
     id: number;
     userId: number;
     leaveType: LeaveType;
-    startDate: string; // Jalaali date string 'YYYY/MM/DD'
-    endDate: string;   // Jalaali date string 'YYYY/MM/DD'
-    startTime?: string; // 'HH:MM'
-    endTime?: string;   // 'HH:MM'
+    startDate: string;
+    endDate: string;
+    startTime?: string;
+    endTime?: string;
     reason: string;
     status: LeaveRequestStatus;
-    requestedAt: string; // ISO string
+    requestedAt: string;
 }
 
 export interface MissionTask {
@@ -200,15 +199,46 @@ export interface MissionTask {
     description: string;
     completed: boolean;
 }
-
 export interface Mission {
     id: number;
     title: string;
     description: string;
-    assignedTo: number; // userId
-    createdBy: number;  // userId
+    assignedTo: number;
+    createdBy: number;
     tasks: MissionTask[];
-    startTimestamp: string; // ISO string
-    endTimestamp: string;   // ISO string
+    startTimestamp: string;
+    endTimestamp: string;
     completed: boolean;
+}
+
+// Customer Introductions
+export type CustomerIntroductionStatus = 'جدید' | 'در حال پیگیری' | 'موفق' | 'ناموفق';
+export type FamiliarityLevel = 'آشنا' | 'جدید';
+
+export interface CustomerIntroduction {
+  id: number;
+  introducerUsername: string;
+  assignedToUsername: string;
+  customerName: string;
+  keyPersonName: string;
+  position: string;
+  contactNumber: string;
+  businessType: string;
+  location: string;
+  mainNeed: string;
+  familiarityLevel: FamiliarityLevel;
+  introductionDate: string;
+  acquaintanceDetails: string;
+  status: CustomerIntroductionStatus;
+  createdAt?: string;
+  linkedCustomerId?: number | null;
+}
+
+export interface IntroductionReferral {
+  id: number;
+  introductionId: number;
+  referredByUsername: string;
+  referredToUsername: string;
+  referralDate: string;
+  introduction?: CustomerIntroduction;
 }

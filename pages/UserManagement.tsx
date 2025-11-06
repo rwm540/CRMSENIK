@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { User } from '../types';
 import UserTable from '../components/UserTable';
@@ -101,8 +99,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onSave, onDelete
   const allOnPageSelected = paginatedUsers.length > 0 && paginatedUsers.every(u => selectedIds.includes(u.id));
 
   return (
-    <div className="flex-1 bg-gray-50 text-slate-800 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-      <main className="max-w-7xl mx-auto">
+    <div className="flex-1 bg-gray-50 text-slate-800 p-4 sm:p-6 lg:p-8 flex flex-col">
+      <main className="max-w-7xl mx-auto w-full flex flex-col flex-1">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
@@ -119,7 +117,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onSave, onDelete
         </div>
 
         {/* User Table Section */}
-        <div className="mt-8">
+        <div className="mt-8 flex flex-col flex-1">
             <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
                  <input
                     type="text"
@@ -148,15 +146,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onSave, onDelete
                 />
                 <label htmlFor="checkbox-all-mobile-users" className="mr-2 text-sm font-medium text-gray-700">انتخاب همه در این صفحه</label>
             </div>
-            <UserTable 
-              users={paginatedUsers} 
-              onEdit={handleOpenModal} 
-              onDelete={(userId) => setItemToDelete(userId)}
-              selectedIds={selectedIds}
-              onToggleSelect={handleToggleSelect}
-              onToggleSelectAll={handleToggleSelectAll}
-              currentUser={currentUser}
-            />
+            <div className="flex-1">
+                <UserTable 
+                  users={paginatedUsers} 
+                  onEdit={handleOpenModal} 
+                  onDelete={(userId) => setItemToDelete(userId)}
+                  selectedIds={selectedIds}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                  currentUser={currentUser}
+                />
+            </div>
             <Pagination 
                 currentPage={currentPage}
                 totalPages={totalPages}

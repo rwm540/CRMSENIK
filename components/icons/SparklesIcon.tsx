@@ -3,7 +3,7 @@ import React from 'react';
 export const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
-    className={className || "w-5 h-5"}
+    className={className || "h-6 w-6"}
     fill="none" 
     viewBox="0 0 24 24" 
     stroke="currentColor" 
@@ -12,17 +12,12 @@ export const SparklesIcon: React.FC<{ className?: string }> = ({ className }) =>
     <path 
       strokeLinecap="round" 
       strokeLinejoin="round" 
-      d="M10.5 21l1.5-4.5 4.5-1.5-4.5-1.5L10.5 3l-1.5 4.5-4.5 1.5 4.5 1.5 1.5 4.5z"
+      d="M9.813 15.904L9 15l.813.904m-2.826-4.813L6 12l.987-1.096M13.5 12l.987.904m-2.826-4.813L12 6l.813.904m2.023 2.023L15 9l.813.904M9 15h6M9 12h6m-6-3h6M4.5 6.75a2.25 2.25 0 012.25-2.25h10.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25V6.75z"
     />
-    <path 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      d="M18.75 11.25l1.5-3-1.5-3-3 1.5 3 1.5z"
-    />
-    <path 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      d="M5.25 11.25l-1.5 3 1.5 3 3-1.5-3-1.5z"
+    <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.362 5.214l.893 1.25a.375.375 0 00.618 0l.893-1.25M17.25 9.75l1.25.893a.375.375 0 000 .618l-1.25.893M15.362 18.786l.893-1.25a.375.375 0 01.618 0l.893 1.25m-4.5-2.625l-1.25.893a.375.375 0 010 .618l1.25.893m-2.625-4.5l-1.25.893a.375.375 0 010 .618l1.25.893M8.638 5.214l-.893 1.25a.375.375 0 01-.618 0l-.893-1.25m-2.625 4.5l-1.25.893a.375.375 0 000 .618l1.25.893m-1.5-6.375l-.893 1.25a.375.375 0 000 .618l.893 1.25m4.5 2.625l1.25-.893a.375.375 0 000-.618l-1.25-.893m2.625 4.5l1.25-.893a.375.375 0 000-.618l-1.25-.893"
     />
   </svg>
 );

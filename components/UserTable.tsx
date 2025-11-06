@@ -1,9 +1,9 @@
+
 import React from 'react';
 import { User, MenuItemId, UserRole } from '../types';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import Avatar from './Avatar';
-import { toPersianDigits } from '../utils/dateFormatter';
 
 interface UserTableProps {
   users: User[];
@@ -15,7 +15,7 @@ interface UserTableProps {
   currentUser: User;
 }
 
-// FIX: Added missing HR menu items ('attendance', 'leave', 'missions') to resolve the TypeScript error.
+// FIX: Added the new 'introductions' menu item to resolve TypeScript errors and display correctly.
 const menuConfig: Record<MenuItemId, { label: string; color: string }> = {
   dashboard: { label: 'داشبورد', color: 'bg-gray-100 text-gray-700' },
   customers: { label: 'مشتریان', color: 'bg-cyan-100 text-cyan-700' },
@@ -24,10 +24,10 @@ const menuConfig: Record<MenuItemId, { label: string; color: string }> = {
   tickets: { label: 'تیکت ها', color: 'bg-rose-100 text-rose-700' },
   reports: { label: 'گزارشات', color: 'bg-blue-100 text-blue-700' },
   referrals: { label: 'ارجاعات', color: 'bg-amber-100 text-amber-700' },
-  // FIX: Added HR menu items to make MenuItemId exhaustive.
-  attendance: { label: 'حضور و غیاب', color: 'bg-purple-100 text-purple-700' },
-  leave: { label: 'مرخصی', color: 'bg-orange-100 text-orange-700' },
-  missions: { label: 'ماموریت', color: 'bg-teal-100 text-teal-700' },
+  attendance: { label: 'حضور و غیاب', color: 'bg-teal-100 text-teal-700' },
+  leave: { label: 'مرخصی ها', color: 'bg-orange-100 text-orange-700' },
+  missions: { label: 'ماموریت ها', color: 'bg-purple-100 text-purple-700' },
+  introductions: { label: 'معرفی مشتریان', color: 'bg-pink-100 text-pink-700' },
 };
 
 const UserTable: React.FC<UserTableProps> = ({ users, onEdit, onDelete, selectedIds, onToggleSelect, onToggleSelectAll, currentUser }) => {

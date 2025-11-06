@@ -1,7 +1,6 @@
-
 import React from 'react';
 
-export const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
+export const ExternalLinkIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     className={className || "h-5 w-5"}
@@ -13,7 +12,7 @@ export const DownloadIcon: React.FC<{ className?: string }> = ({ className }) =>
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
-      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
     />
   </svg>
 );
