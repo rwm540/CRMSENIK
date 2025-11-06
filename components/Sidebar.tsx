@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { UsersIcon } from './icons/UsersIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
@@ -12,10 +13,6 @@ import { TicketIcon } from './icons/TicketIcon';
 import { PurchaseIcon } from './icons/PurchaseIcon';
 import { toPersianDigits } from '../utils/dateFormatter';
 import { XIcon } from './icons/XIcon';
-// FIX: Added imports for HR feature icons.
-import { FingerPrintIcon } from './icons/FingerPrintIcon';
-import { CalendarIcon } from './icons/CalendarIcon';
-import { BriefcaseIcon } from './icons/BriefcaseIcon';
 // FIX: Added icon for the new Customer Introductions feature.
 import { SparklesIcon } from './icons/SparklesIcon';
 
@@ -35,15 +32,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isSidebarO
     { id: 'customers', label: 'مشتریان', icon: <UserGroupIcon /> },
     { id: 'users', label: 'کاربران', icon: <UsersIcon /> },
     { id: 'contracts', label: 'قرارداد ها', icon: <PurchaseIcon /> },
-    // FIX: Added the new 'introductions' navigation item.
     { id: 'introductions', label: 'معرفی مشتریان', icon: <SparklesIcon /> },
     { id: 'tickets', label: 'تیکت ها', icon: <TicketIcon /> },
     { id: 'reports', label: 'گزارشات', icon: <DocumentTextIcon /> },
     { id: 'referrals', label: 'ارجاعات', icon: <HashtagIcon /> },
-    // FIX: Added navigation items for HR features.
-    { id: 'attendance', label: 'حضور و غیاب', icon: <FingerPrintIcon /> },
-    { id: 'leave', label: 'مرخصی ها', icon: <CalendarIcon /> },
-    { id: 'missions', label: 'ماموریت ها', icon: <BriefcaseIcon /> },
   ];
   
   const accessibleNavItems = allNavItems.filter(item => {

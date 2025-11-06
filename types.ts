@@ -1,8 +1,8 @@
 // types.ts
 
 // User Management
-// FIX: Added 'introductions' menu item ID for the new customer introduction feature.
-export type MenuItemId = 'dashboard' | 'customers' | 'users' | 'contracts' | 'tickets' | 'reports' | 'referrals' | 'attendance' | 'leave' | 'missions' | 'introductions';
+// CHG: حذف ویژگی‌های منابع انسانی
+export type MenuItemId = 'dashboard' | 'customers' | 'users' | 'contracts' | 'tickets' | 'reports' | 'referrals' | 'introductions';
 // FIX: Changed 'مسئول پشتیبانی' to 'مسئول پشتیبان' to match the database schema.
 export type UserRole = 'مدیر' | 'مسئول فروش' | 'مسئول پشتیبان' | 'مسئول برنامه نویس' | 'کارشناس فروش' | 'کارشناس پشتیبانی' | 'کارشناس برنامه نویس';
 
@@ -170,47 +170,6 @@ export interface Referral {
     ticket: Ticket; // Hydrated in App.tsx
 }
 
-// HR Management
-export type AttendanceType = 'ورود' | 'خروج';
-export interface AttendanceRecord {
-    id: number;
-    userId: number;
-    timestamp: string;
-    type: AttendanceType;
-}
-
-export type LeaveType = 'روزانه' | 'ساعتی';
-export type LeaveRequestStatus = 'در انتظار تایید' | 'تایید شده' | 'رد شده';
-export interface LeaveRequest {
-    id: number;
-    userId: number;
-    leaveType: LeaveType;
-    startDate: string;
-    endDate: string;
-    startTime?: string;
-    endTime?: string;
-    reason: string;
-    status: LeaveRequestStatus;
-    requestedAt: string;
-}
-
-export interface MissionTask {
-    id: number;
-    description: string;
-    completed: boolean;
-}
-export interface Mission {
-    id: number;
-    title: string;
-    description: string;
-    assignedTo: number;
-    createdBy: number;
-    tasks: MissionTask[];
-    startTimestamp: string;
-    endTimestamp: string;
-    completed: boolean;
-}
-
 // Customer Introductions
 export type CustomerIntroductionStatus = 'جدید' | 'در حال پیگیری' | 'موفق' | 'ناموفق';
 export type FamiliarityLevel = 'آشنا' | 'جدید';
@@ -242,3 +201,53 @@ export interface IntroductionReferral {
   referralDate: string;
   introduction?: CustomerIntroduction;
 }
+// FIX: Add missing HR types to fix compilation errors.
+// -- START HR Management --
+
+// Attendance Management
+export type AttendanceType = 'ورود' | 'خروج';
+
+export interface AttendanceRecord {
+  id: number;
+  userId: number;
+  timestamp: string; // ISO date string
+  type: AttendanceType;
+}
+
+// Leave Management
+export type LeaveType = 'روزانه' | 'ساعتی';
+export type LeaveRequestStatus = 'در انتظار تایید' | 'تایید شده' | 'رد شده';
+
+export interface LeaveRequest {
+  id: number;
+  userId: number;
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  startTime?: string;
+  endTime?: string;
+  reason: string;
+  status: LeaveRequestStatus;
+  requestedAt: string; // ISO date string
+}
+
+// Mission Management
+export interface MissionTask {
+  id: number;
+  description: string;
+  completed: boolean;
+}
+
+export interface Mission {
+  id: number;
+  title: string;
+  description: string;
+  assignedTo: number;
+  createdBy: number;
+  tasks: MissionTask[];
+  startTimestamp: string; // ISO date string
+  endTimestamp: string; // ISO date string
+  completed: boolean;
+}
+
+// -- END HR Management --

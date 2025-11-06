@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 // FIX: Added CustomerIntroduction type for the new feature.
 import { User, Customer, PurchaseContract, SupportContract, Ticket, Referral, MenuItemId, TicketStatus, CustomerIntroduction, IntroductionReferral, CustomerIntroductionStatus } from './types';
@@ -57,7 +58,7 @@ const convertKeysToSnakeCase = (obj: any): any => {
     return obj;
 };
 
-// FIX: Added page title for the new 'introductions' feature.
+// CHG: حذف عناوین صفحات منابع انسانی
 const pageTitles: Record<MenuItemId, string> = {
   dashboard: 'داشبورد',
   customers: 'مدیریت مشتریان',
@@ -66,9 +67,6 @@ const pageTitles: Record<MenuItemId, string> = {
   tickets: 'مدیریت تیکت‌ها',
   reports: 'گزارشات',
   referrals: 'ارجاعات',
-  attendance: 'حضور و غیاب',
-  leave: 'مرخصی ها',
-  missions: 'ماموریت ها',
   introductions: 'معرفی مشتریان',
 };
 
@@ -139,7 +137,7 @@ const App: React.FC = () => {
             score: calculateTicketScore(ticket, camelCustomers, camelSupportContracts),
         }));
 
-        scoredTickets.sort((a, b) => {
+        scoredTickets.sort((a: Ticket, b: Ticket) => {
             if ((a.score ?? 999) !== (b.score ?? 999)) {
                 return (a.score ?? 999) - (b.score ?? 999);
             }
@@ -260,7 +258,7 @@ const App: React.FC = () => {
         score: calculateTicketScore(ticket, customers, supportContracts),
     }));
 
-    scoredTickets.sort((a, b) => {
+    scoredTickets.sort((a: Ticket, b: Ticket) => {
         if ((a.score ?? 999) !== (b.score ?? 999)) {
             return (a.score ?? 999) - (b.score ?? 999);
         }
@@ -659,7 +657,11 @@ const App: React.FC = () => {
         const updatedIntroduction = convertKeysToCamelCase(updatedIntroductionData[0]);
 
         // Manually update the local state for immediate UI feedback.
-        setIntroductions(prev => prev.map(i => i.id === updatedIntroduction.id ? updatedIntroduction : i).sort((a,b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()));
+        setIntroductions(prev => prev.map(i => i.id === updatedIntroduction.id ? updatedIntroduction : i).sort((a: CustomerIntroduction, b: CustomerIntroduction) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : (parseJalaali(a.introductionDate)?.getTime() || 0);
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : (parseJalaali(b.introductionDate)?.getTime() || 0);
+            return dateB - dateA;
+        }));
 
         // Conditionally add to history only if the table exists.
         if (introductionReferralTableExists) {
