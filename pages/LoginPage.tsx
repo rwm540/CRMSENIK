@@ -3,7 +3,7 @@ import { User } from '../types';
 import Alert from '../components/Alert';
 
 interface LoginPageProps {
-  onLogin: (username: string, password: string) => Promise<boolean>;
+  onLogin: (username: string, password: string) => Promise<{ success: boolean; error?: string; }>;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
@@ -17,10 +17,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setErrors([]);
     setLoading(true);
 
-    const success = await onLogin(username, password);
+    const result = await onLogin(username, password);
     
-    if (!success) {
-        setErrors(['نام کاربری یا رمز عبور اشتباه است.']);
+    if (!result.success) {
+        setErrors([result.error || 'نام کاربری یا رمز عبور اشتباه است.']);
     }
     // On successful login, the App.tsx component will handle setting the current user
     // and re-rendering the application to show the dashboard.

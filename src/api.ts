@@ -9,7 +9,7 @@ const api = axios.create({
   baseURL: `${supabaseUrl}/rest/v1`,
   headers: {
     'apikey': supabaseAnonKey,
-    'Authorization': `Bearer ${supabaseAnonKey}`,
+    'Authorization': `Bearer ${supabaseAnonKey}`, // Use anon key for all requests
     'Content-Type': 'application/json',
   }
 });

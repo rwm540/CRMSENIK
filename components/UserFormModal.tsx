@@ -36,27 +36,11 @@ const allRoles: UserRole[] = [
   'کارشناس برنامه نویس',
 ];
 
-const generateUniqueUsername = (existingUsers: User[]): string => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    const existingUsernames = new Set(existingUsers.map(u => u.username));
-
-    while (true) {
-        let result = '';
-        for (let i = 0; i < 6; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        if (!existingUsernames.has(result)) {
-            return result;
-        }
-    }
-};
-
 const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, user, users }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [accessibleMenus, setAccessibleMenus] = useState<MenuItemId[]>([]);
   // FIX: Corrected a typo in the default user role to match the UserRole type.
   const [role, setRole] = useState<UserRole>('کارشناس پشتیبانی');
@@ -64,45 +48,34 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
   // CHG: Added internal saving state for localized loading indicator.
   const [isSaving, setIsSaving] = useState(false);
 
+  const resetForm = () => {
+    setFirstName('');
+    setLastName('');
+    setUsername('');
+    setPassword('');
+    setAccessibleMenus([]);
+    setRole('کارشناس پشتیبانی');
+    setErrors([]);
+  };
+
   useEffect(() => {
     if (isOpen) {
       if (user) { // Editing existing user
         setFirstName(user.firstName);
         setLastName(user.lastName);
         setUsername(user.username);
+        setPassword(''); // Password is not edited here for security
         setAccessibleMenus(user.accessibleMenus || []);
-        // FIX: Corrected a typo in the default user role to match the UserRole type.
         setRole(user.role || 'کارشناس پشتیبانی');
-        setPassword('');
-        setConfirmPassword('');
       } else { // Adding a new user
-        const newUsername = generateUniqueUsername(users);
-        setUsername(newUsername);
-        // reset other fields for a clean form
-        setFirstName('');
-        setLastName('');
-        setPassword('');
-        setConfirmPassword('');
-        setAccessibleMenus([]);
-        // FIX: Corrected a typo in the default user role to match the UserRole type.
-        setRole('کارشناس پشتیبانی');
+        resetForm();
       }
-    }
-
-    if (!isOpen) {
+    } else {
       setTimeout(() => {
-        setFirstName('');
-        setLastName('');
-        setUsername('');
-        setPassword('');
-        setConfirmPassword('');
-        setAccessibleMenus([]);
-        // FIX: Corrected a typo in the default user role to match the UserRole type.
-        setRole('کارشناس پشتیبانی');
-        setErrors([]);
+        resetForm();
       }, 300); // Reset after closing animation
     }
-  }, [user, isOpen, users]);
+  }, [user, isOpen]);
 
 
   const handleMenuChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,15 +93,17 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
 
     if (!firstName.trim()) validationErrors.push('نام نمی‌تواند خالی باشد.');
     if (!lastName.trim()) validationErrors.push('نام خانوادگی نمی‌تواند خالی باشد.');
+    if (!username.trim()) validationErrors.push('نام کاربری نمی‌تواند خالی باشد.');
     
-    if (!user && !password) {
+    const isEditing = !!user;
+
+    if (!isEditing && !password) {
         validationErrors.push('رمز عبور برای کاربر جدید الزامی است.');
     }
-    if (password) {
-        if (password.length < 6) validationErrors.push('رمز عبور باید حداقل ۶ کاراکتر باشد.');
-        if (password !== confirmPassword) {
-            validationErrors.push('رمز عبور و تکرار آن مطابقت ندارند.');
-        }
+    
+    const otherUsers = users.filter(u => u.id !== user?.id);
+    if (otherUsers.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+        validationErrors.push('این نام کاربری قبلا استفاده شده است.');
     }
     
     if (accessibleMenus.length === 0) {
@@ -140,15 +115,18 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
         return;
     }
 
-    const savedUser = {
+    const savedUser: Partial<User> = {
         ...(user && { id: user.id }),
         firstName,
         lastName,
         username,
         accessibleMenus,
         role,
-        ...(password && { password }),
     };
+    
+    if (!isEditing) {
+        savedUser.password = password;
+    }
     
     setIsSaving(true);
     try {
@@ -161,11 +139,13 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
     }
   };
 
+  const isEditing = !!user;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
+    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
       <div className="p-6">
         <h3 className="text-lg font-medium leading-6 text-cyan-600 mb-4">
-          {user ? 'ویرایش کاربر' : 'افزودن کاربر جدید'}
+          {user ? 'ویرایش کاربر' : 'ایجاد کاربر جدید'}
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Alert messages={errors} onClose={() => setErrors([])} />
@@ -178,21 +158,33 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">نام خانوادگی</label>
               <input type="text" name="lastName" id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm" />
             </div>
-          </div>
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">نام کاربری</label>
-            <input type="text" name="username" id="username" value={username} readOnly className="mt-1 block w-full bg-slate-200 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm cursor-not-allowed" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">{user ? 'رمز عبور جدید (اختیاری)' : 'رمز عبور'}</label>
-              <input type="password" name="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm" />
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">نام کاربری</label>
+              <input 
+                type="text" 
+                name="username" 
+                id="username" 
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)}
+                className="mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm"
+              />
             </div>
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">تکرار رمز عبور</label>
-              <input type="password" name="confirmPassword" id="confirmPassword" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm" />
+             <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">رمز عبور</label>
+              <input 
+                type="password" 
+                name="password" 
+                id="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isEditing} 
+                className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm ${isEditing ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-gray-50'}`} 
+              />
+              {isEditing && <p className="mt-1 text-xs text-gray-500">رمز عبور را نمی‌توان از این بخش ویرایش کرد.</p>}
             </div>
           </div>
+          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">نقش کاربر</label>
             <select name="role" value={role} onChange={(e) => setRole(e.target.value as UserRole)} className="mt-1 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm">

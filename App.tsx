@@ -71,11 +71,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activePage, setActivePage] = useState<MenuItemId>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // CHG: Replaced isProcessing with more specific loading states for better UX.
-  // CHG: Renamed isLoading to isAuthenticating for clarity. This state is for the initial session check.
-  const [isAuthenticating, setIsAuthenticating] = useState(true);
-  // CHG: Added isInitialDataLoading for the main data fetch after login, allowing the UI shell to render instantly.
-  const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false); // Simplified to one loading state
+  const [isInitialDataLoading, setIsInitialDataLoading] = useState(false);
 
   const [alerts, setAlerts] = useState<{ id: number; messages: string[]; type: 'error' | 'success' }[]>([]);
 
@@ -86,17 +83,11 @@ const App: React.FC = () => {
   const [supportContracts, setSupportContracts] = useState<SupportContract[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [referrals, setReferrals] = useState<Referral[]>([]);
-  // FIX: Added state for the new Customer Introductions feature.
   const [introductions, setIntroductions] = useState<CustomerIntroduction[]>([]);
   const [introductionReferrals, setIntroductionReferrals] = useState<IntroductionReferral[]>([]);
-  // FIX: Add state to track if the referral history table exists to prevent errors.
   const [introductionReferralTableExists, setIntroductionReferralTableExists] = useState(true);
-  // FIX: Removed unused HR data states.
   
-  // FIX: Add refs to track changes in dependencies for ticket scoring effect.
-  // FIX: Provided an initial value to useRef to fix "Expected 1 arguments, but got 0" error.
   const prevCustomersRef = useRef<Customer[] | undefined>(undefined);
-  // FIX: Provided an initial value to useRef to fix "Expected 1 arguments, but got 0" error.
   const prevSupportContractsRef = useRef<SupportContract[] | undefined>(undefined);
 
   const addAlert = useCallback((messages: string[], type: 'error' | 'success') => {
@@ -108,8 +99,6 @@ const App: React.FC = () => {
   };
 
 
-  // Centralized data fetching function
-  // CHG: Refactored to use Promise.allSettled for more robust parallel fetching.
   const fetchAllData = useCallback(async () => {
     if (!currentUser) return;
     setIsInitialDataLoading(true);
@@ -131,7 +120,6 @@ const App: React.FC = () => {
             ticketsRes, referralsRes, introductionsRes, introReferralsRes
         ] = results;
 
-        // Process successful core responses
         const camelUsers = usersRes.status === 'fulfilled' ? convertKeysToCamelCase(usersRes.value.data) : [];
         const camelCustomers = customersRes.status === 'fulfilled' ? convertKeysToCamelCase(customersRes.value.data) : [];
         const camelPurchaseContracts = purchaseContractsRes.status === 'fulfilled' ? convertKeysToCamelCase(purchaseContractsRes.value.data) : [];
@@ -142,7 +130,6 @@ const App: React.FC = () => {
         setPurchaseContracts(camelPurchaseContracts);
         setSupportContracts(camelSupportContracts);
         
-        // Process tickets and referrals
         if (ticketsRes.status === 'fulfilled') {
             const camelTickets = convertKeysToCamelCase(ticketsRes.value.data);
             const scoredTickets = camelTickets.map((ticket: Ticket) => ({
@@ -170,7 +157,6 @@ const App: React.FC = () => {
             }
         }
 
-        // Process optional introductions data
         if (introductionsRes.status === 'fulfilled') {
             setIntroductions(convertKeysToCamelCase(introductionsRes.value.data));
         } else if (introductionsRes.status === 'rejected') {
@@ -183,14 +169,13 @@ const App: React.FC = () => {
             }
         }
         
-        // Process optional introduction referrals data
         if (introReferralsRes.status === 'fulfilled' && introReferralsRes.value !== null) {
             setIntroductionReferrals(convertKeysToCamelCase(introReferralsRes.value.data));
         } else if (introReferralsRes.status === 'rejected') {
             const error = introReferralsRes.reason as any;
             const errorMessage = error.response?.data?.message || error.message || '';
             if (errorMessage.includes("relation \"public.introduction_referrals\" does not exist")) {
-                 setIntroductionReferralTableExists(false); // Disable future attempts
+                 setIntroductionReferralTableExists(false);
             }
         }
 
@@ -202,42 +187,14 @@ const App: React.FC = () => {
     }
   }, [currentUser, addAlert, introductionReferralTableExists]);
 
-  // Session management: Check for a valid session on initial load
-  useEffect(() => {
-    const checkSession = () => {
-        try {
-            const sessionDataString = localStorage.getItem('crm_session');
-            if (sessionDataString) {
-                const { user, loginTimestamp } = JSON.parse(sessionDataString);
-                const threeDaysInMillis = 3 * 24 * 60 * 60 * 1000;
-                
-                if (Date.now() - loginTimestamp < threeDaysInMillis) {
-                    setCurrentUser(user);
-                } else {
-                    localStorage.removeItem('crm_session');
-                }
-            }
-        } catch (error) {
-            console.error("Failed to parse session data from localStorage", error);
-            localStorage.removeItem('crm_session');
-        } finally {
-            setIsAuthenticating(false); // Finished checking session
-        }
-    };
-    checkSession();
-  }, []);
-
-  // This effect runs when `currentUser` is set (either from session or from login).
   useEffect(() => {
     if (currentUser) {
       fetchAllData();
     } else {
-      // If there's no user (e.g., after logout), there's no data to load.
       setIsInitialDataLoading(false);
     }
   }, [currentUser, fetchAllData]);
   
-  // Centralized function for sorting and scoring tickets
   const sortAndScoreTickets = useCallback((ticketArr: Ticket[]) => {
     const scoredTickets = ticketArr.map(ticket => ({
         ...ticket,
@@ -255,10 +212,7 @@ const App: React.FC = () => {
     return scoredTickets;
   }, [customers, supportContracts]);
   
-  // FIX: This effect re-scores and re-sorts all tickets whenever the underlying data
-  // (customers or support contracts) changes. This ensures ticket scores are always up-to-date.
   useEffect(() => {
-    // CHG: Removed isProcessing check as it no longer exists.
     if (isAuthenticating || isInitialDataLoading) return;
     
     if (prevCustomersRef.current !== customers || prevSupportContractsRef.current !== supportContracts) {
@@ -277,22 +231,20 @@ const App: React.FC = () => {
       }
     };
     window.addEventListener('resize', handleResize);
-    handleResize(); // Initial check
+    handleResize();
     
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   
-  // A unified function to update a ticket across all relevant states and re-sort
   const updateTicketInState = useCallback((updatedTicket: Ticket) => {
       setTickets(prev => sortAndScoreTickets(prev.map(t => t.id === updatedTicket.id ? updatedTicket : t)));
       setReferrals(prev => prev.map(r => 
           r.ticket.id === updatedTicket.id 
-              ? { ...r, ticket: updatedTicket } // Note: nested ticket won't have score until next full re-render
+              ? { ...r, ticket: updatedTicket }
               : r
       ));
   }, [sortAndScoreTickets]);
 
-  // Realtime data synchronization
   useEffect(() => {
     if (!currentUser) return;
 
@@ -393,19 +345,16 @@ const App: React.FC = () => {
     channels.push(supabase.channel('public:tickets').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, handleTicketChange).subscribe());
     channels.push(supabase.channel('public:referrals').on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, handleReferralChange).subscribe());
     channels.push(supabase.channel('public:customer_introductions').on('postgres_changes', { event: '*', schema: 'public', table: 'customer_introductions' }, handleIntroductionChange).subscribe());
-    // FIX: Conditionally subscribe to referral history table.
     if (introductionReferralTableExists) {
       channels.push(supabase.channel('public:introduction_referrals').on('postgres_changes', { event: '*', schema: 'public', table: 'introduction_referrals' }, createRealtimeHandler(setIntroductionReferrals)).subscribe());
     }
-    // FIX: Removed realtime subscriptions for HR tables.
 
     return () => {
         channels.forEach(channel => supabase.removeChannel(channel));
     };
 }, [currentUser, updateTicketInState, sortAndScoreTickets, introductionReferralTableExists]);
 
-
-  const handleLogin = async (username: string, password: string): Promise<boolean> => {
+  const handleLogin = async (username: string, password: string): Promise<{ success: boolean; error?: string; }> => {
     try {
       const { data, error } = await supabase.rpc('login_user', {
         p_username: username,
@@ -413,44 +362,42 @@ const App: React.FC = () => {
       });
 
       if (error) {
-        console.error('RPC login error:', error);
-        return false;
+        console.error('RPC error logging in:', error);
+        return { success: false, error: 'خطا در ارتباط با سرور. لطفا RLS policies و تابع login_user را بررسی کنید.' };
       }
       
-      if (data && data.length === 1) {
-        const loggedInUser = convertKeysToCamelCase(data[0]);
-        
-        if (!loggedInUser || !loggedInUser.id) return false;
-        
-        const sessionData = { user: loggedInUser, loginTimestamp: Date.now() };
-        localStorage.setItem('crm_session', JSON.stringify(sessionData));
-
-        setCurrentUser(loggedInUser); // This will trigger the data fetch useEffect
-        return true;
+      if (!data || data.length === 0) {
+        return { success: false, error: 'نام کاربری یا رمز عبور اشتباه است.' };
       }
 
-      return false;
+      const loggedInUser = convertKeysToCamelCase(data[0]);
+      setCurrentUser(loggedInUser);
+      return { success: true };
     } catch (error) {
-      console.error('خطای ورود:', error);
-      return false;
+      console.error('خطای کلی در ورود:', error);
+      return { success: false, error: 'یک خطای پیش‌بینی نشده رخ داد.' };
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('crm_session');
+  const handleLogout = async () => {
     setCurrentUser(null);
     setActivePage('dashboard');
   };
 
-  // --- START CRUD Handlers (wrapped in useCallback) ---
-  
-  // CHG: CRUD handlers no longer manage global isProcessing state. They are async and re-throw errors.
   const handleSaveUser = useCallback(async (user: User | Omit<User, 'id'>) => {
+    if (!user.accessibleMenus || user.accessibleMenus.length === 0) {
+        const errorMessage = 'کاربر باید حداقل به یک منو دسترسی داشته باشد.';
+        addAlert(['خطا در ذخیره کاربر.', errorMessage], 'error');
+        throw new Error(errorMessage);
+    }
     try {
+        const { password, ...userWithoutPassword } = user as User;
         const payload = convertKeysToSnakeCase(user);
         const isEditing = 'id' in user;
+        
         if (isEditing) {
             const { id, ...updateData } = payload;
+            delete updateData.password; // Never update password from here
             const { data } = await api.patch(`/users?id=eq.${id}`, updateData, { headers: { 'Prefer': 'return=representation' } });
             const updatedUser = convertKeysToCamelCase(data[0]);
             setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
@@ -464,7 +411,7 @@ const App: React.FC = () => {
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در ذخیره کاربر.', errorMessage], 'error');
       console.error("خطا در ذخیره کاربر:", errorMessage);
-      throw error; // Re-throw to be caught by the form modal
+      throw error;
     }
   }, [addAlert]);
   
@@ -488,7 +435,7 @@ const App: React.FC = () => {
       await api.delete(`/users?id=eq.${userId}`); 
       
       setUsers(prev => prev.filter(u => u.id !== userId));
-      addAlert(['کاربر با موفقیت حذف شد.'], 'success');
+      addAlert([`کاربر با موفقیت حذف شد.`], 'success');
     } catch (error: any) { 
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در حذف کاربر.', errorMessage], 'error');
@@ -692,7 +639,7 @@ const App: React.FC = () => {
     try {
         const ticketToDelete = tickets.find(t => t.id === ticketId);
 
-        if (ticketToDelete && ticketToDelete.attachments && ticketToDelete.attachments.length > 0) {
+        if (ticketToDelete && ticketToDelete.attachments.length > 0) {
             const firstUrl = ticketToDelete.attachments[0];
             const urlParts = firstUrl.split(`/${BUCKET_NAME}/`);
             if (urlParts.length > 1) {
@@ -938,7 +885,6 @@ const App: React.FC = () => {
         return <ReportsPage customers={customers} users={users} purchaseContracts={purchaseContracts} supportContracts={supportContracts} tickets={tickets} currentUser={currentUser} />;
       case 'referrals':
         return <ReferralsPage referrals={referrals} currentUser={currentUser} users={users} customers={customers} supportContracts={supportContracts} tickets={tickets} onSave={handleSaveTicket} onReferTicket={handleReferTicket} onToggleWork={handleToggleWork} onExtendEditTime={handleExtendEditTime} />;
-      // FIX: Added case for the new introductions page.
       case 'introductions':
         const introductionsForUser = introductions.filter(intro => {
           if (currentUser.role === 'مدیر') return true;

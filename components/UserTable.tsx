@@ -68,10 +68,6 @@ const UserTable: React.FC<UserTableProps> = ({ users, onEdit, onDelete, selected
                     <span className="text-gray-500">{user.role}</span>
                 </div>
                 <div>
-                    <span className="font-semibold text-gray-600">رمز عبور: </span>
-                    <span className="text-gray-500 font-mono">{user.password || 'نامشخص'}</span>
-                </div>
-                <div>
                     <span className="font-semibold text-gray-600">دسترسی‌ها: </span>
                     <div className="flex flex-wrap gap-1 mt-1">
                         {user.accessibleMenus.map(menuId => (
@@ -125,7 +121,6 @@ const UserTable: React.FC<UserTableProps> = ({ users, onEdit, onDelete, selected
               </th>
               <th scope="col" className="px-6 py-4">کاربر</th>
               <th scope="col" className="px-6 py-4">نقش</th>
-              <th scope="col" className="px-6 py-4">رمز عبور</th>
               <th scope="col" className="px-6 py-4">دسترسی‌ها</th>
               <th scope="col" className="px-6 py-4 text-left">اقدامات</th>
             </tr>
@@ -154,9 +149,6 @@ const UserTable: React.FC<UserTableProps> = ({ users, onEdit, onDelete, selected
                 </td>
                  <td className="px-6 py-4">
                   <span className="text-gray-500">{user.role}</span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className="font-mono text-gray-500">{user.password || 'نامشخص'}</span>
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">

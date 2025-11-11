@@ -11,7 +11,7 @@ export interface User {
   firstName: string;
   lastName: string;
   username: string;
-  password?: string; // Password is optional when reading user data
+  password?: string; // Optional: only used for creation
   accessibleMenus: MenuItemId[];
   role: UserRole;
 }
