@@ -692,7 +692,7 @@ const App: React.FC = () => {
     try {
         const ticketToDelete = tickets.find(t => t.id === ticketId);
 
-        if (ticketToDelete?.attachments?.length > 0) {
+        if (ticketToDelete && ticketToDelete.attachments && ticketToDelete.attachments.length > 0) {
             const firstUrl = ticketToDelete.attachments[0];
             const urlParts = firstUrl.split(`/${BUCKET_NAME}/`);
             if (urlParts.length > 1) {
