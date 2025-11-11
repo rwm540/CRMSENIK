@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 // FIX: Added CustomerIntroduction type for the new feature.
 import { User, Customer, PurchaseContract, SupportContract, Ticket, Referral, MenuItemId, TicketStatus, CustomerIntroduction, IntroductionReferral, CustomerIntroductionStatus } from './types';
@@ -427,9 +428,22 @@ const App: React.FC = () => {
   const handleLogin = async (username: string, password: string): Promise<boolean> => {
     // The login page has its own internal loading state for the button.
     try {
-      const { data, status } = await api.get(`/users?username=eq.${username}&password=eq.${password}&select=*`);
+      // FIX: Switched from an insecure GET request to a secure POST request to a remote procedure call (RPC).
+      // This is the standard and secure way to handle authentication. It assumes an RPC function
+      // named 'login_user' exists on the backend that validates credentials and returns the user record.
+      const { data, status } = await api.post('/rpc/login_user', {
+        p_username: username,
+        p_password: password
+      });
+
+      // A successful call to an RPC that returns a single row will result in an array with one object.
       if (status === 200 && data && data.length > 0) {
         const loggedInUser = convertKeysToCamelCase(data[0]);
+        
+        // Ensure we actually got a user object back, not an empty object/array
+        if (!loggedInUser || !loggedInUser.id) {
+            return false;
+        }
         
         const sessionData = {
             user: loggedInUser,
@@ -445,6 +459,7 @@ const App: React.FC = () => {
       }
       return false;
     } catch (error) {
+      // The RPC might return a 4xx error on login failure, which axios will throw.
       console.error('خطای ورود:', error);
       return false;
     }
