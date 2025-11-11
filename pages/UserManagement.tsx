@@ -10,7 +10,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 
 interface UserManagementProps {
   users: User[];
-  onSave: (user: User | Omit<User, 'id'>) => void;
+  onSave: (user: User | Omit<User, 'id'>) => Promise<void>;
   onDelete: (userId: number) => void;
   onDeleteMany: (userIds: number[]) => void;
   currentUser: User;
@@ -39,8 +39,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onSave, onDelete
     setTimeout(() => setEditingUser(null), 300);
   };
 
-  const handleSaveUser = (userData: User | Omit<User, 'id'>) => {
-    onSave(userData);
+  const handleSaveUser = async (userData: User | Omit<User, 'id'>) => {
+    await onSave(userData);
     handleCloseModal();
   };
   
@@ -170,7 +170,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onSave, onDelete
         <UserFormModal
           isOpen={isModalOpen}
           onClose={handleCloseModal}
-          onSave={handleSaveUser}
+          onSave={onSave}
           user={editingUser}
           users={users}
         />

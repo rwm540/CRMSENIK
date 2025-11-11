@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { User, MenuItemId, UserRole } from '../types';
 import Modal from './Modal';
 import Alert from './Alert';
+import { LoadingSpinnerIcon } from './icons/LoadingSpinnerIcon';
 
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (user: User | Omit<User, 'id'>) => void;
+  onSave: (user: User | Omit<User, 'id'>) => Promise<void>;
   user: User | null;
   users: User[]; // All users for uniqueness validation
 }
@@ -60,6 +61,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
   // FIX: Corrected a typo in the default user role to match the UserRole type.
   const [role, setRole] = useState<UserRole>('کارشناس پشتیبانی');
   const [errors, setErrors] = useState<string[]>([]);
+  // CHG: Added internal saving state for localized loading indicator.
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -110,7 +113,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const validationErrors: string[] = [];
@@ -147,8 +150,15 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
         ...(password && { password }),
     };
     
-    onSave(savedUser as User | Omit<User, 'id'>);
-    onClose();
+    setIsSaving(true);
+    try {
+      await onSave(savedUser as User | Omit<User, 'id'>);
+      onClose();
+    } catch (error) {
+      // Error is handled in App.tsx, the modal stays open for correction.
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -214,15 +224,17 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
+              disabled={isSaving}
+              className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:bg-gray-200"
             >
               انصراف
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white"
+              disabled={isSaving}
+              className="px-4 py-2 w-28 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors flex justify-center items-center focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white disabled:bg-gray-400"
             >
-              ذخیره کاربر
+              {isSaving ? <LoadingSpinnerIcon /> : 'ذخیره کاربر'}
             </button>
           </div>
         </form>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 // FIX: Added CustomerIntroduction type for the new feature.
 import { User, Customer, PurchaseContract, SupportContract, Ticket, Referral, MenuItemId, TicketStatus, CustomerIntroduction, IntroductionReferral, CustomerIntroductionStatus } from './types';
@@ -22,7 +21,7 @@ import SupportContracts from './pages/SupportContracts';
 // FIX: Added import for the new IntroductionsPage.
 import IntroductionsPage from './pages/IntroductionsPage';
 // FIX: Removed unused HR page imports.
-import ProcessingOverlay from './components/ProcessingOverlay';
+// CHG: Removed ProcessingOverlay as it's replaced by localized loaders.
 // FIX: Import parseJalaali to handle date conversions for sorting.
 import { formatJalaaliDateTime, toPersianDigits, parseJalaali, parseJalaaliDateTime } from './utils/dateFormatter';
 import Alert from './components/Alert';
@@ -72,8 +71,12 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activePage, setActivePage] = useState<MenuItemId>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // CHG: Replaced isProcessing with more specific loading states for better UX.
+  // CHG: Renamed isLoading to isAuthenticating for clarity. This state is for the initial session check.
+  const [isAuthenticating, setIsAuthenticating] = useState(true);
+  // CHG: Added isInitialDataLoading for the main data fetch after login, allowing the UI shell to render instantly.
+  const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
+
   const [alerts, setAlerts] = useState<{ id: number; messages: string[]; type: 'error' | 'success' }[]>([]);
 
   // All application data states
@@ -106,103 +109,96 @@ const App: React.FC = () => {
 
 
   // Centralized data fetching function
+  // CHG: Refactored to use Promise.allSettled for more robust parallel fetching.
   const fetchAllData = useCallback(async () => {
     if (!currentUser) return;
-    // Note: isProcessing is NOT set here. The main `isLoading` state handles the initial load.
+    setIsInitialDataLoading(true);
+    
     try {
-        // Fetch core data first
-        const [
-            usersRes, customersRes, purchaseContractsRes,
-            supportContractsRes, ticketsRes, referralsRes,
-        ] = await Promise.all([
+        const results = await Promise.allSettled([
             api.get('/users?select=*&order=id.asc'),
             api.get('/customers?select=*&order=id.asc'),
             api.get('/purchase_contracts?select=*&order=id.asc'),
             api.get('/support_contracts?select=*&order=id.asc'),
             api.get('/tickets?select=*&order=id.asc'),
             api.get('/referrals?select=*,ticket:tickets(*)&order=id.asc'),
+            api.get('/customer_introductions?select=*&order=created_at.desc'),
+            introductionReferralTableExists ? api.get('/introduction_referrals?select=*,introduction:customer_introductions(*)&order=id.asc') : Promise.resolve(null),
         ]);
 
-        const camelUsers = convertKeysToCamelCase(usersRes.data);
-        const camelCustomers = convertKeysToCamelCase(customersRes.data);
-        const camelPurchaseContracts = convertKeysToCamelCase(purchaseContractsRes.data);
-        const camelSupportContracts = convertKeysToCamelCase(supportContractsRes.data);
+        const [
+            usersRes, customersRes, purchaseContractsRes, supportContractsRes, 
+            ticketsRes, referralsRes, introductionsRes, introReferralsRes
+        ] = results;
 
-        // Score and sort tickets using newly fetched data to break dependency cycle
-        const camelTickets = convertKeysToCamelCase(ticketsRes.data);
-        const scoredTickets = camelTickets.map((ticket: Ticket) => ({
-            ...ticket,
-            score: calculateTicketScore(ticket, camelCustomers, camelSupportContracts),
-        }));
+        // Process successful core responses
+        const camelUsers = usersRes.status === 'fulfilled' ? convertKeysToCamelCase(usersRes.value.data) : [];
+        const camelCustomers = customersRes.status === 'fulfilled' ? convertKeysToCamelCase(customersRes.value.data) : [];
+        const camelPurchaseContracts = purchaseContractsRes.status === 'fulfilled' ? convertKeysToCamelCase(purchaseContractsRes.value.data) : [];
+        const camelSupportContracts = supportContractsRes.status === 'fulfilled' ? convertKeysToCamelCase(supportContractsRes.value.data) : [];
 
-        scoredTickets.sort((a: Ticket, b: Ticket) => {
-            if ((a.score ?? 999) !== (b.score ?? 999)) {
-                return (a.score ?? 999) - (b.score ?? 999);
-            }
-            const dateA = parseJalaaliDateTime(a.creationDateTime)?.getTime() || 0;
-            const dateB = parseJalaaliDateTime(b.creationDateTime)?.getTime() || 0;
-            return dateB - dateA; // Sort by creation date descending as a tie-breaker
-        });
-        
         setUsers(camelUsers);
         setCustomers(camelCustomers);
         setPurchaseContracts(camelPurchaseContracts);
         setSupportContracts(camelSupportContracts);
-        setTickets(scoredTickets);
         
-        const camelReferrals = convertKeysToCamelCase(referralsRes.data).map((ref: any) => {
-            if (ref.ticket) {
-                ref.ticket = convertKeysToCamelCase(ref.ticket);
-            } else {
-                ref.ticket = scoredTickets.find((t: Ticket) => t.id === ref.ticketId) || ref.ticket;
+        // Process tickets and referrals
+        if (ticketsRes.status === 'fulfilled') {
+            const camelTickets = convertKeysToCamelCase(ticketsRes.value.data);
+            const scoredTickets = camelTickets.map((ticket: Ticket) => ({
+                ...ticket,
+                score: calculateTicketScore(ticket, camelCustomers, camelSupportContracts),
+            }));
+            scoredTickets.sort((a: Ticket, b: Ticket) => {
+                if ((a.score ?? 999) !== (b.score ?? 999)) return (a.score ?? 999) - (b.score ?? 999);
+                const dateA = parseJalaaliDateTime(a.creationDateTime)?.getTime() || 0;
+                const dateB = parseJalaaliDateTime(b.creationDateTime)?.getTime() || 0;
+                return dateB - dateA;
+            });
+            setTickets(scoredTickets);
+            
+            if (referralsRes.status === 'fulfilled') {
+                const camelReferrals = convertKeysToCamelCase(referralsRes.value.data).map((ref: any) => {
+                    if (ref.ticket) {
+                        ref.ticket = convertKeysToCamelCase(ref.ticket);
+                    } else {
+                        ref.ticket = scoredTickets.find((t: Ticket) => t.id === ref.ticketId) || ref.ticket;
+                    }
+                    return ref;
+                });
+                setReferrals(camelReferrals);
             }
-            return ref;
-        });
-        setReferrals(camelReferrals);
-
-    } catch (error: any) {
-        const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
-        addAlert(['خطا در دریافت اطلاعات اصلی.', errorMessage], 'error');
-        console.error("خطا در دریافت اطلاعات اصلی:", errorMessage);
-    }
-
-    // Separately fetch introductions data to handle potential errors gracefully
-    try {
-        const introductionsRes = await api.get('/customer_introductions?select=*&order=created_at.desc');
-        setIntroductions(convertKeysToCamelCase(introductionsRes.data));
-    } catch (error: any) {
-        const errorMessage = error.response?.data?.message || error.message || '';
-        const isMissingTableError = errorMessage.includes("relation \"public.customer_introductions\" does not exist") || errorMessage.includes("Could not find the table");
-
-        if (isMissingTableError) {
-             addAlert([
-                'جدول "معرفی مشتریان" یافت نشد!', 
-                'برای فعال‌سازی این بخش، لازم است جدول مربوطه در پایگاه داده شما ایجاد شود.',
-                'لطفا اسکریپت SQL مربوط به ساخت جدول را در Supabase اجرا کنید.'
-            ], 'error');
-            console.error("خطا: جدول customer_introductions وجود ندارد.");
-        } else {
-            addAlert(['خطا در دریافت اطلاعات معرفی مشتریان.', errorMessage], 'error');
-            console.error("خطا در دریافت اطلاعات معرفی مشتریان:", errorMessage);
         }
-    }
-    
-    // Fetch introduction referrals history only if we believe the table exists.
-    if (introductionReferralTableExists) {
-        try {
-            const introReferralsRes = await api.get('/introduction_referrals?select=*,introduction:customer_introductions(*)&order=id.asc');
-            setIntroductionReferrals(convertKeysToCamelCase(introReferralsRes.data));
-        } catch (error: any) {
+
+        // Process optional introductions data
+        if (introductionsRes.status === 'fulfilled') {
+            setIntroductions(convertKeysToCamelCase(introductionsRes.value.data));
+        } else if (introductionsRes.status === 'rejected') {
+            const error = introductionsRes.reason as any;
             const errorMessage = error.response?.data?.message || error.message || '';
-            // FIX: Improve error detection and set a flag to disable the feature if the table is missing.
-            const isMissingTableError = errorMessage.includes("relation \"public.introduction_referrals\" does not exist") || errorMessage.includes("Could not find the table");
-            if(isMissingTableError) {
-                 console.warn("جدول تاریخچه ارجاعات معرفی (introduction_referrals) وجود ندارد. ویژگی تاریخچه غیرفعال شد.");
-                 setIntroductionReferralTableExists(false);
+            if (errorMessage.includes("relation \"public.customer_introductions\" does not exist")) {
+                addAlert(['جدول "معرفی مشتریان" یافت نشد! برای فعال‌سازی این بخش، اسکریپت SQL مربوطه را در Supabase اجرا کنید.'], 'error');
             } else {
-                console.error("خطا در دریافت تاریخچه ارجاعات معرفی:", errorMessage);
+                addAlert(['خطا در دریافت اطلاعات معرفی مشتریان.', errorMessage], 'error');
             }
         }
+        
+        // Process optional introduction referrals data
+        if (introReferralsRes.status === 'fulfilled' && introReferralsRes.value !== null) {
+            setIntroductionReferrals(convertKeysToCamelCase(introReferralsRes.value.data));
+        } else if (introReferralsRes.status === 'rejected') {
+            const error = introReferralsRes.reason as any;
+            const errorMessage = error.response?.data?.message || error.message || '';
+            if (errorMessage.includes("relation \"public.introduction_referrals\" does not exist")) {
+                 setIntroductionReferralTableExists(false); // Disable future attempts
+            }
+        }
+
+    } catch (error) {
+        addAlert(['یک خطای غیرمنتظره در هنگام بارگذاری داده‌ها رخ داد.'], 'error');
+        console.error("خطا در بارگذاری اولیه:", error);
+    } finally {
+        setIsInitialDataLoading(false);
     }
   }, [currentUser, addAlert, introductionReferralTableExists]);
 
@@ -216,37 +212,29 @@ const App: React.FC = () => {
                 const threeDaysInMillis = 3 * 24 * 60 * 60 * 1000;
                 
                 if (Date.now() - loginTimestamp < threeDaysInMillis) {
-                    // Session is valid. Set the user. Data fetching will be triggered by another useEffect.
                     setCurrentUser(user);
                 } else {
-                    // Session expired, stop loading and show login page.
                     localStorage.removeItem('crm_session');
-                    setIsLoading(false);
                 }
-            } else {
-                 // No session found, stop loading and show login page.
-                setIsLoading(false);
             }
         } catch (error) {
             console.error("Failed to parse session data from localStorage", error);
             localStorage.removeItem('crm_session');
-            setIsLoading(false); // Stop loading on error
+        } finally {
+            setIsAuthenticating(false); // Finished checking session
         }
     };
     checkSession();
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, []);
 
   // This effect runs when `currentUser` is set (either from session or from login).
   useEffect(() => {
-    const performInitialFetch = async () => {
-      // If a user is set, fetch their data.
-      if (currentUser) {
-        await fetchAllData();
-        // Once data is fetched, hide the main loader.
-        setIsLoading(false);
-      }
-    };
-    performInitialFetch();
+    if (currentUser) {
+      fetchAllData();
+    } else {
+      // If there's no user (e.g., after logout), there's no data to load.
+      setIsInitialDataLoading(false);
+    }
   }, [currentUser, fetchAllData]);
   
   // Centralized function for sorting and scoring tickets
@@ -270,21 +258,16 @@ const App: React.FC = () => {
   // FIX: This effect re-scores and re-sorts all tickets whenever the underlying data
   // (customers or support contracts) changes. This ensures ticket scores are always up-to-date.
   useEffect(() => {
-    // Don't run on initial load or while another process is running, as data is still changing.
-    if (isLoading || isProcessing) return;
+    // CHG: Removed isProcessing check as it no longer exists.
+    if (isAuthenticating || isInitialDataLoading) return;
     
-    // Check if the dependencies have actually changed since the last run to prevent infinite loops.
-    // FIX: Simplified state update and corrected function call.
     if (prevCustomersRef.current !== customers || prevSupportContractsRef.current !== supportContracts) {
-        // FIX: Replaced problematic shorthand functional update with an explicit one to resolve error.
         setTickets(currentTickets => sortAndScoreTickets(currentTickets));
     }
 
-    // Update the refs for the next render.
-    // FIX: Corrected assignment to ref's .current property.
     prevCustomersRef.current = customers;
     prevSupportContractsRef.current = supportContracts;
-  }, [customers, supportContracts, isLoading, isProcessing, sortAndScoreTickets]);
+  }, [customers, supportContracts, isAuthenticating, isInitialDataLoading, sortAndScoreTickets]);
 
 
    useEffect(() => {
@@ -424,40 +407,28 @@ const App: React.FC = () => {
 
   const handleLogin = async (username: string, password: string): Promise<boolean> => {
     try {
-      // FIX: Use a secure RPC call to a database function for authentication.
-      // This avoids sending the password in the URL and bypasses RLS issues
-      // that were preventing the direct table query from working.
       const { data, error } = await supabase.rpc('login_user', {
         p_username: username,
         p_password: password
       });
 
       if (error) {
-        // Log the specific error for debugging but don't expose it to the user.
         console.error('RPC login error:', error);
         return false;
       }
       
-      // A successful call with correct credentials will return an array with one user.
       if (data && data.length === 1) {
         const loggedInUser = convertKeysToCamelCase(data[0]);
         
-        if (!loggedInUser || !loggedInUser.id) {
-            return false;
-        }
+        if (!loggedInUser || !loggedInUser.id) return false;
         
-        const sessionData = {
-            user: loggedInUser,
-            loginTimestamp: Date.now()
-        };
+        const sessionData = { user: loggedInUser, loginTimestamp: Date.now() };
         localStorage.setItem('crm_session', JSON.stringify(sessionData));
 
-        setIsLoading(true);
-        setCurrentUser(loggedInUser);
+        setCurrentUser(loggedInUser); // This will trigger the data fetch useEffect
         return true;
       }
 
-      // If data is empty, credentials were wrong.
       return false;
     } catch (error) {
       console.error('خطای ورود:', error);
@@ -466,7 +437,6 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    // Clear session from localStorage on logout
     localStorage.removeItem('crm_session');
     setCurrentUser(null);
     setActivePage('dashboard');
@@ -474,10 +444,8 @@ const App: React.FC = () => {
 
   // --- START CRUD Handlers (wrapped in useCallback) ---
   
-  // FIX: Updated user handlers to manually update state, making the UI responsive
-  // even if realtime is not configured correctly (e.g., due to RLS policies).
+  // CHG: CRUD handlers no longer manage global isProcessing state. They are async and re-throw errors.
   const handleSaveUser = useCallback(async (user: User | Omit<User, 'id'>) => {
-    setIsProcessing(true);
     try {
         const payload = convertKeysToSnakeCase(user);
         const isEditing = 'id' in user;
@@ -496,7 +464,8 @@ const App: React.FC = () => {
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در ذخیره کاربر.', errorMessage], 'error');
       console.error("خطا در ذخیره کاربر:", errorMessage);
-    } finally { setIsProcessing(false); }
+      throw error; // Re-throw to be caught by the form modal
+    }
   }, [addAlert]);
   
   const handleDeleteUser = useCallback(async (userId: number) => {
@@ -504,7 +473,6 @@ const App: React.FC = () => {
         addAlert(['شما نمی‌توانید حساب کاربری خود را حذف کنید.'], 'error');
         return;
     }
-    setIsProcessing(true);
     try { 
       const userToDelete = users.find(u => u.id === userId);
       if (!userToDelete) throw new Error('کاربر برای حذف یافت نشد.');
@@ -515,10 +483,8 @@ const App: React.FC = () => {
       await api.patch(`/tickets?assigned_to_username=eq.${usernameToDelete}`, { assigned_to_username: null });
       await api.patch(`/purchase_contracts?salesperson_username=eq.${usernameToDelete}`, { salesperson_username: null });
       await api.patch(`/purchase_contracts?crm_responsible_username=eq.${usernameToDelete}`, { crm_responsible_username: null });
-      // FIX: Added deletion of related customer introductions.
       await api.delete(`/customer_introductions?introducer_username=eq.${usernameToDelete}`);
       await api.delete(`/customer_introductions?assigned_to_username=eq.${usernameToDelete}`);
-
       await api.delete(`/users?id=eq.${userId}`); 
       
       setUsers(prev => prev.filter(u => u.id !== userId));
@@ -526,7 +492,7 @@ const App: React.FC = () => {
     } catch (error: any) { 
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در حذف کاربر.', errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [users, currentUser, addAlert]);
 
   const handleDeleteManyUsers = useCallback(async (userIds: number[]) => {
@@ -534,13 +500,9 @@ const App: React.FC = () => {
         addAlert(['شما نمی‌توانید حساب کاربری خود را در حذف گروهی انتخاب کنید.'], 'error');
         return;
     }
-    setIsProcessing(true);
     try { 
       const usersToDelete = users.filter(u => userIds.includes(u.id));
-      if (usersToDelete.length === 0) {
-        setIsProcessing(false);
-        return;
-      }
+      if (usersToDelete.length === 0) return;
       const usernamesToDelete = usersToDelete.map(u => u.username);
       const usernamesQuery = `in.(${usernamesToDelete.join(',')})`;
       const userIdsQuery = `in.(${userIds.join(',')})`;
@@ -550,10 +512,8 @@ const App: React.FC = () => {
       await api.patch(`/tickets?assigned_to_username=${usernamesQuery}`, { assigned_to_username: null });
       await api.patch(`/purchase_contracts?salesperson_username=${usernamesQuery}`, { salesperson_username: null });
       await api.patch(`/purchase_contracts?crm_responsible_username=${usernamesQuery}`, { crm_responsible_username: null });
-       // FIX: Added deletion of related customer introductions.
       await api.delete(`/customer_introductions?introducer_username=${usernamesQuery}`);
       await api.delete(`/customer_introductions?assigned_to_username=${usernamesQuery}`);
-
       await api.delete(`/users?id=${userIdsQuery}`); 
       
       setUsers(prev => prev.filter(u => !userIds.includes(u.id)));
@@ -561,7 +521,7 @@ const App: React.FC = () => {
     } catch (error: any) { 
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در حذف گروهی کاربران.', errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [users, currentUser, addAlert]);
 
   const useGenericCrudHandlers = <T extends {id: number}>(
@@ -571,12 +531,10 @@ const App: React.FC = () => {
     options?: {
       sortAfterInsert?: (a: T, b: T) => number;
       onItemUpdate?: (item: T) => void;
-      // FIX: Add an onItemInsert callback to handle special logic for new items.
       onItemInsert?: (item: T) => void;
     }
   ) => {
     const onSave = useCallback(async (data: T | Omit<T, 'id'>): Promise<T> => {
-        setIsProcessing(true);
         try {
             const payload = convertKeysToSnakeCase(data);
             const isEditing = 'id' in data;
@@ -593,7 +551,6 @@ const App: React.FC = () => {
             } else {
                 const { data: newData } = await api.post(`/${endpoint}`, payload, { headers: { 'Prefer': 'return=representation' } });
                 savedItem = convertKeysToCamelCase(newData[0]);
-                // FIX: Use the new onItemInsert callback if provided.
                 if (options?.onItemInsert) {
                     options.onItemInsert(savedItem);
                 } else {
@@ -606,11 +563,10 @@ const App: React.FC = () => {
             const errorMessage = error.response?.data?.message || error.message;
             addAlert([`خطا در ذخیره ${entityName}.`, errorMessage], 'error');
             throw error;
-        } finally { setIsProcessing(false); }
+        }
     }, [entityName, endpoint, setState, options, addAlert]);
 
     const onDelete = useCallback(async (id: number) => {
-        setIsProcessing(true);
         try {
             await api.delete(`/${endpoint}?id=eq.${id}`);
             setState(prev => prev.filter(item => item.id !== id));
@@ -618,11 +574,10 @@ const App: React.FC = () => {
         } catch (error: any) {
             const errorMessage = error.response?.data?.message || error.message;
             addAlert([`خطا در حذف ${entityName}.`, errorMessage], 'error');
-        } finally { setIsProcessing(false); }
+        }
     }, [entityName, endpoint, setState, addAlert]);
 
     const onDeleteMany = useCallback(async (ids: number[]) => {
-        setIsProcessing(true);
         try {
             await api.delete(`/${endpoint}?id=in.(${ids.join(',')})`);
             setState(prev => prev.filter(item => !ids.includes(item.id)));
@@ -630,7 +585,7 @@ const App: React.FC = () => {
         } catch (error: any) {
             const errorMessage = error.response?.data?.message || error.message;
             addAlert([`خطا در حذف گروهی ${entityName}.`, errorMessage], 'error');
-        } finally { setIsProcessing(false); }
+        }
     }, [entityName, endpoint, setState, addAlert]);
 
     return { onSave, onDelete, onDeleteMany };
@@ -653,32 +608,26 @@ const App: React.FC = () => {
   );
   
   const handleReferIntroduction = useCallback(async (introduction: CustomerIntroduction, newAssigneeUsername: string) => {
-    setIsProcessing(true);
     try {
         const payload: { assigned_to_username: string; status?: CustomerIntroduction['status'] } = {
             assigned_to_username: newAssigneeUsername,
         };
-        // Automatically move to "In Progress" on the first referral.
         if (introduction.status === 'جدید') {
             payload.status = 'در حال پیگیری';
         }
         
-        // Update the main introduction record and get the updated data back.
         const { data: updatedIntroductionData } = await api.patch(
             `/customer_introductions?id=eq.${introduction.id}`, 
             payload,
             { headers: { 'Prefer': 'return=representation' } }
         );
         const updatedIntroduction = convertKeysToCamelCase(updatedIntroductionData[0]);
-
-        // Manually update the local state for immediate UI feedback.
         setIntroductions(prev => prev.map(i => i.id === updatedIntroduction.id ? updatedIntroduction : i).sort((a: CustomerIntroduction, b: CustomerIntroduction) => {
             const dateA = a.createdAt ? new Date(a.createdAt).getTime() : (parseJalaali(a.introductionDate)?.getTime() || 0);
             const dateB = b.createdAt ? new Date(b.createdAt).getTime() : (parseJalaali(b.introductionDate)?.getTime() || 0);
             return dateB - dateA;
         }));
 
-        // Conditionally add to history only if the table exists.
         if (introductionReferralTableExists) {
             try {
                 const referralPayload = {
@@ -689,28 +638,22 @@ const App: React.FC = () => {
                 };
                 const { data: newReferralData } = await api.post('/introduction_referrals', referralPayload, { headers: { 'Prefer': 'return=representation' } });
                 const newReferral = convertKeysToCamelCase(newReferralData[0]);
-                // Manually update the history state for immediate UI feedback.
                 setIntroductionReferrals(prev => [...prev, newReferral]);
             } catch (error: any) {
                 console.error("خطا در ثبت تاریخچه ارجاع معرفی:", error);
                 const errorMessage = (error as any).response?.data?.message || '';
-                const isMissingTableError = errorMessage.includes("relation \"public.introduction_referrals\" does not exist") || errorMessage.includes("Could not find the table");
-                if (isMissingTableError) {
-                    setIntroductionReferralTableExists(false); // Update our knowledge.
+                if (errorMessage.includes("relation \"public.introduction_referrals\" does not exist")) {
+                    setIntroductionReferralTableExists(false);
                 }
             }
         }
-        
         addAlert(['معرفی با موفقیت ارجاع داده شد.'], 'success');
     } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message || 'خطای ناشناخته.';
         addAlert(['خطا در ارجاع معرفی.', errorMessage], 'error');
-    } finally {
-        setIsProcessing(false);
     }
   }, [currentUser, addAlert, introductionReferralTableExists]);
   
-  // FIX: Add a specific handler for ticket insertion to ensure scoring and sorting.
   const handleInsertTicket = useCallback((newTicket: Ticket) => {
     setTickets(prev => sortAndScoreTickets([ ...prev.filter(t => t.id !== newTicket.id), newTicket ]));
   }, [sortAndScoreTickets]);
@@ -721,57 +664,45 @@ const App: React.FC = () => {
     setTickets, 
     { 
         onItemUpdate: updateTicketInState,
-        // FIX: Use the new custom insert handler.
         onItemInsert: handleInsertTicket,
     }
   );
 
   const handleSaveTicket = useCallback(async (ticketData: (Ticket | Omit<Ticket, 'id'>) & { score?: number }) => {
-    setIsProcessing(true);
-    try {
-        const { score, ...ticketToSave } = ticketData;
+    const { score, ...ticketToSave } = ticketData;
+    let payload: Partial<Ticket> & { id?: number } = { ...ticketToSave };
+    const isEditing = 'id' in payload;
 
-        let payload: Partial<Ticket> & { id?: number } = { ...ticketToSave };
-        const isEditing = 'id' in payload;
-
-        if (!isEditing) {
-            const now = new Date();
-            payload = {
-                ...payload,
-                ticketNumber: `new-${Date.now()}`, // Consistent name for folder and ticket number initially
-                creationDateTime: formatJalaaliDateTime(now),
-                lastUpdateDate: formatJalaaliDateTime(now),
-                editableUntil: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
-            };
-        } else {
-            payload = { ...payload, lastUpdateDate: formatJalaaliDateTime(new Date()) };
-        }
-        await handleGenericTicketSave(payload as Ticket);
-
-    } catch (error: any) {
-    } finally { setIsProcessing(false); }
+    if (!isEditing) {
+        const now = new Date();
+        payload = {
+            ...payload,
+            ticketNumber: `new-${Date.now()}`,
+            creationDateTime: formatJalaaliDateTime(now),
+            lastUpdateDate: formatJalaaliDateTime(now),
+            editableUntil: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        };
+    } else {
+        payload = { ...payload, lastUpdateDate: formatJalaaliDateTime(new Date()) };
+    }
+    await handleGenericTicketSave(payload as Ticket);
   }, [handleGenericTicketSave]);
   
   const handleDeleteTicket = useCallback(async (ticketId: number) => {
-    setIsProcessing(true);
     try {
         const ticketToDelete = tickets.find(t => t.id === ticketId);
 
-        if (ticketToDelete && ticketToDelete.attachments && ticketToDelete.attachments.length > 0) {
+        if (ticketToDelete?.attachments?.length > 0) {
             const firstUrl = ticketToDelete.attachments[0];
             const urlParts = firstUrl.split(`/${BUCKET_NAME}/`);
             if (urlParts.length > 1) {
                 const firstPath = decodeURIComponent(urlParts[1].split('?')[0]);
                 const folderPath = firstPath.substring(0, firstPath.lastIndexOf('/'));
-
                 if (folderPath) {
                     const { data: allFiles, error: listError } = await supabase.storage.from(BUCKET_NAME).list(folderPath);
                     if (allFiles && !listError && allFiles.length > 0) {
                         const allFilePaths = allFiles.map(f => `${folderPath}/${f.name}`);
-                        const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(allFilePaths);
-                        if (removeError) {
-                           console.error(`Could not delete files for folder ${folderPath}:`, removeError);
-                        }
+                        await supabase.storage.from(BUCKET_NAME).remove(allFilePaths);
                     }
                 }
             }
@@ -787,31 +718,20 @@ const App: React.FC = () => {
     } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
         addAlert(['خطا در حذف تیکت.', errorMessage], 'error');
-    } finally { setIsProcessing(false); }
-  }, [tickets, referrals, addAlert]);
+    }
+  }, [tickets, addAlert]);
 
   const { onSave: handleSavePurchaseContract } = useGenericCrudHandlers<PurchaseContract>('قرارداد فروش', 'purchase_contracts', setPurchaseContracts);
 
   const handleDeletePurchaseContract = useCallback(async (contractId: number) => {
-    setIsProcessing(true);
     try {
         const contractToDelete = purchaseContracts.find(c => c.id === contractId);
-        if (contractToDelete && contractToDelete.contractId) {
+        if (contractToDelete?.contractId) {
             const folderPath = contractToDelete.contractId;
-            const { data: files, error: listError } = await supabase.storage
-                .from(BUCKET_NAME)
-                .list(folderPath);
-
-            if (listError && listError.message !== 'The resource was not found') {
-                console.error(`Failed to list files for contract ${folderPath}:`, listError);
-            } else if (files && files.length > 0) {
+            const { data: files, error: listError } = await supabase.storage.from(BUCKET_NAME).list(folderPath);
+            if (!listError && files && files.length > 0) {
                 const filePaths = files.map(file => `${folderPath}/${file.name}`);
-                try {
-                    const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(filePaths);
-                    if (removeError) throw removeError;
-                } catch (storageError) {
-                    console.error("Failed to delete contract attachments, proceeding with DB deletion:", storageError);
-                }
+                await supabase.storage.from(BUCKET_NAME).remove(filePaths);
             }
         }
 
@@ -821,38 +741,21 @@ const App: React.FC = () => {
     } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
         addAlert([`خطا در حذف قرارداد فروش.`, errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [purchaseContracts, addAlert]);
   
   const handleDeleteManyPurchaseContracts = useCallback(async (contractIds: number[]) => {
-    setIsProcessing(true);
     try {
         const contractsToDelete = purchaseContracts.filter(c => contractIds.includes(c.id));
-        if (contractsToDelete.length === 0) {
-            setIsProcessing(false);
-            return;
-        }
-
+        if (contractsToDelete.length === 0) return;
+        
         for (const contract of contractsToDelete) {
-             if (contract && contract.contractId) {
+             if (contract?.contractId) {
                 const folderPath = contract.contractId;
-                const { data: files, error: listError } = await supabase.storage
-                    .from(BUCKET_NAME)
-                    .list(folderPath);
-
-                if (listError && listError.message !== 'The resource was not found') {
-                    console.error(`Failed to list files for contract ${folderPath}:`, listError);
-                } else if (files && files.length > 0) {
+                const { data: files, error: listError } = await supabase.storage.from(BUCKET_NAME).list(folderPath);
+                if (!listError && files && files.length > 0) {
                     const filePaths = files.map(file => `${folderPath}/${file.name}`);
-                    try {
-                       const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(filePaths);
-                       if (removeError) {
-                           console.error(`Could not delete files for ${folderPath}:`, removeError);
-                           // Decide if you want to throw or just log
-                       }
-                    } catch (storageError) {
-                        console.error("A general error occurred deleting attachments for a contract, proceeding with DB deletion:", storageError);
-                    }
+                    await supabase.storage.from(BUCKET_NAME).remove(filePaths);
                 }
             }
         }
@@ -863,33 +766,26 @@ const App: React.FC = () => {
     } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
         addAlert([`خطا در حذف گروهی قراردادهای فروش.`, errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [purchaseContracts, addAlert]);
 
 
   const handleReferTicket = useCallback(async (ticketId: number, isFromReferral: boolean, referredBy: User, referredToUsername: string) => {
-    setIsProcessing(true);
     try {
         const { data: updatedTicketData } = await api.patch(`/tickets?id=eq.${ticketId}`, { status: 'ارجاع شده', assigned_to_username: referredToUsername }, { headers: { 'Prefer': 'return=representation' }});
         const updatedTicket = convertKeysToCamelCase(updatedTicketData[0]);
         updateTicketInState(updatedTicket);
         
-        const referralPayload = {
-            ticket_id: ticketId,
-            referred_by_username: referredBy.username,
-            referred_to_username: referredToUsername,
-            referral_date: new Date().toISOString()
-        };
+        const referralPayload = { ticket_id: ticketId, referred_by_username: referredBy.username, referred_to_username: referredToUsername, referral_date: new Date().toISOString() };
         await api.post('/referrals', referralPayload);
         addAlert([`تیکت با موفقیت ارجاع داده شد.`], 'success');
     } catch (error: any) {
         const errorMessage = error.response?.data?.message || error.message;
         addAlert(['خطا در ارجاع تیکت.', errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [updateTicketInState, addAlert]);
 
   const handleToggleWork = useCallback(async (ticketId: number) => {
-      setIsProcessing(true);
       try {
         const ticket = tickets.find(t => t.id === ticketId) || referrals.find(r => r.ticket.id === ticketId)?.ticket;
         if (!ticket) return;
@@ -915,11 +811,10 @@ const App: React.FC = () => {
         addAlert([`وضعیت تیکت با موفقیت تغییر کرد.`], 'success');
       } catch(e) {
          addAlert(['خطا در تغییر وضعیت تیکت.'], 'error');
-      } finally { setIsProcessing(false); }
+      }
   }, [tickets, referrals, updateTicketInState, addAlert]);
 
   const handleReopenTicket = useCallback(async (ticketId: number) => {
-      setIsProcessing(true);
       try {
         const { data: updatedTicketData } = await api.patch(`/tickets?id=eq.${ticketId}`, { status: 'انجام نشده' }, { headers: { 'Prefer': 'return=representation' }});
         const updatedTicket = convertKeysToCamelCase(updatedTicketData[0]);
@@ -927,51 +822,38 @@ const App: React.FC = () => {
         addAlert(['تیکت با موفقیت مجدداً باز شد.'], 'success');
       } catch (e) {
         addAlert(['خطا در باز کردن مجدد تیکت.'], 'error');
-      } finally { setIsProcessing(false); }
+      }
   }, [updateTicketInState, addAlert]);
   
   const handleExtendEditTime = useCallback(async (ticketId: number) => {
-      setIsProcessing(true);
       try {
         const newEditableUntil = new Date(new Date().getTime() + 30 * 60 * 1000).toISOString();
-        const { data: updatedTicketData } = await api.patch(
-            `/tickets?id=eq.${ticketId}`,
-            { editable_until: newEditableUntil },
-            { headers: { 'Prefer': 'return=representation' } }
-        );
+        const { data: updatedTicketData } = await api.patch(`/tickets?id=eq.${ticketId}`, { editable_until: newEditableUntil }, { headers: { 'Prefer': 'return=representation' } });
         const updatedTicket = convertKeysToCamelCase(updatedTicketData[0]);
         updateTicketInState(updatedTicket);
         addAlert(['زمان ویرایش تیکت برای ۳۰ دقیقه دیگر تمدید شد.'], 'success');
       } catch (e) {
         addAlert(['خطا در تمدید زمان ویرایش.'], 'error');
-      } finally { setIsProcessing(false); }
+      }
   }, [updateTicketInState, addAlert]);
   
   const handleDeleteManyTickets = useCallback(async (ticketIds: number[]) => {
-    setIsProcessing(true);
     try {
       const ticketsToDelete = tickets.filter(t => ticketIds.includes(t.id));
-      if (ticketsToDelete.length === 0) {
-        setIsProcessing(false);
-        return;
-      }
-
+      if (ticketsToDelete.length === 0) return;
+      
       for (const ticket of ticketsToDelete) {
-         if (ticket && ticket.attachments && ticket.attachments.length > 0) {
+         if (ticket?.attachments?.length > 0) {
             const firstUrl = ticket.attachments[0];
             const urlParts = firstUrl.split(`/${BUCKET_NAME}/`);
             if (urlParts.length > 1) {
                 const firstPath = decodeURIComponent(urlParts[1].split('?')[0]);
                 const folderPath = firstPath.substring(0, firstPath.lastIndexOf('/'));
-
                 if (folderPath) {
                     const { data: allFiles, error: listError } = await supabase.storage.from(BUCKET_NAME).list(folderPath);
                     if (allFiles && !listError && allFiles.length > 0) {
                         const allFilePaths = allFiles.map(f => `${folderPath}/${f.name}`);
-                        const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(allFilePaths);
-                        if (removeError) {
-                            console.error(`Could not delete files for folder ${folderPath}:`, removeError);
-                        }
+                        await supabase.storage.from(BUCKET_NAME).remove(allFilePaths);
                     }
                 }
             }
@@ -984,29 +866,19 @@ const App: React.FC = () => {
       
       setTickets(prev => prev.filter(t => !ticketIds.includes(t.id)));
       setReferrals(prev => prev.filter(r => !ticketIds.includes(r.ticketId)));
-
       addAlert([`${toPersianDigits(ticketIds.length)} تیکت با موفقیت حذف شدند.`], 'success');
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
       addAlert(['خطا در حذف گروهی تیکت‌ها.', errorMessage], 'error');
-    } finally {
-      setIsProcessing(false);
     }
-  }, [tickets, referrals, addAlert]);
+  }, [tickets, addAlert]);
 
   const handleSetStatusManyTickets = useCallback(async (ticketIds: number[], status: TicketStatus) => {
-    setIsProcessing(true);
     try {
         const idsQuery = `in.(${ticketIds.join(',')})`;
-        const payload = {
-            status,
-            work_session_started_at: null,
-            last_update_date: formatJalaaliDateTime(new Date())
-        };
-
+        const payload = { status, work_session_started_at: null, last_update_date: formatJalaaliDateTime(new Date()) };
         const { data: updatedTicketsData } = await api.patch(`/tickets?id=${idsQuery}`, convertKeysToSnakeCase(payload), { headers: { 'Prefer': 'return=representation' } });
         
-        // FIX: Add explicit type annotation to resolve type inference issues.
         const updatedTickets: Ticket[] = convertKeysToCamelCase(updatedTicketsData);
         const updatedTicketMap = new Map(updatedTickets.map((t: Ticket) => [t.id, t]));
         
@@ -1021,13 +893,22 @@ const App: React.FC = () => {
     } catch (error: any) { 
         const errorMessage = error.response?.data?.message || error.message || 'یک خطای ناشناخته رخ داد.';
         addAlert(['خطا در تغییر وضعیت گروهی تیکت‌ها.', errorMessage], 'error');
-    } finally { setIsProcessing(false); }
+    }
   }, [addAlert, sortAndScoreTickets]);
 
   // --- END CRUD Handlers ---
 
   const renderPage = () => {
     if (!currentUser) return null;
+
+    if (isInitialDataLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <span className="loader !border-cyan-600"></span>
+        </div>
+      );
+    }
+    
     switch (activePage) {
       case 'dashboard':
         return <DashboardPage users={users} customers={customers} purchaseContracts={purchaseContracts} supportContracts={supportContracts} tickets={tickets} referrals={referrals} />;
@@ -1060,11 +941,7 @@ const App: React.FC = () => {
       // FIX: Added case for the new introductions page.
       case 'introductions':
         const introductionsForUser = introductions.filter(intro => {
-          // Manager can see all introductions
-          if (currentUser.role === 'مدیر') {
-            return true;
-          }
-          // Others see intros they created OR are assigned to.
+          if (currentUser.role === 'مدیر') return true;
           return intro.introducerUsername === currentUser.username || intro.assignedToUsername === currentUser.username;
         });
         return <IntroductionsPage 
@@ -1078,13 +955,12 @@ const App: React.FC = () => {
             introductionReferrals={introductionReferrals}
             onSaveCustomer={handleSaveCustomer}
         />;
-      // FIX: Removed unused HR page cases.
       default:
         return <DashboardPage users={users} customers={customers} purchaseContracts={purchaseContracts} supportContracts={supportContracts} tickets={tickets} referrals={referrals} />;
     }
   };
   
-  if (isLoading) {
+  if (isAuthenticating) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-50">
         <span className="loader !border-cyan-600"></span>
@@ -1094,7 +970,6 @@ const App: React.FC = () => {
 
   return (
     <>
-      <ProcessingOverlay isVisible={isProcessing} />
       <div className="fixed top-5 left-5 z-[9999] space-y-3">
         {alerts.map(alert => (
           <Alert 
